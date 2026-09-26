@@ -8,7 +8,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Permite que Render muestre index.html, css, js e img
+// Servir archivos del frontend
 app.use(express.static(__dirname));
 
 const dbConfig = {
@@ -17,6 +17,7 @@ const dbConfig = {
     connectString: process.env.DB_CONNECT_STRING
 };
 
+// API de servicios
 app.get("/servicios", async (req, res) => {
     let connection;
 
@@ -33,13 +34,16 @@ app.get("/servicios", async (req, res) => {
              FROM servicios
              ORDER BY id_servicio`,
             [],
-            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+            {
+                outFormat: oracledb.OUT_FORMAT_OBJECT
+            }
         );
 
         res.json(result.rows);
 
     } catch (error) {
         console.error("Error Oracle:", error);
+
         res.status(500).json({
             error: error.message
         });
@@ -56,7 +60,7 @@ app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// Render asigna automáticamente el puerto
+// Puerto compatible con Render
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
