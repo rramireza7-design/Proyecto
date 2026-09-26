@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSF-PHONE | Servicio Técnico</title>
+    <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+
+<header class="top-header">
+    <div class="brand">📱 RSF-PHONE</div>
+
+    <div class="search-box">
+        <span>🔍</span>
+        <input id="buscar" onkeyup="mostrarProductos()" placeholder="Búsqueda">
+    </div>
+
+    <div class="icons">
+        <span>👤</span>
+
+        <span class="carrito-icono" onclick="mostrarSeccion('carrito')">
+            🛒 <small id="contadorCarrito">0</small>
+        </span>
+    </div>
+</header>
+
+<nav class="menu">
+    <button onclick="mostrarSeccion('todo')">Inicio</button>
+    <button onclick="mostrarSeccion('catalogo')">Catálogo</button>
+    <button onclick="mostrarSeccion('servicios')">Servicios</button>
+    <button onclick="mostrarSeccion('formulario')">Agregar servicio</button>
+    <button onclick="mostrarSeccion('contacto')">Contacto</button>
+</nav>
+
+<section class="hero page-section" id="inicio">
+    <div class="hero-text">
+        <h1>RSF-PHONE</h1>
+        <h2>Servicio técnico premium</h2>
+        <p>Reparación Android, iPhone, pantallas, baterías y diagnóstico profesional.</p>
+
+        <button onclick="mostrarSeccion('catalogo')">
+            Ver catálogo
+        </button>
+    </div>
+
+    <div class="hero-img">
+        📱
+    </div>
+</section>
+
+<section class="catalogo page-section" id="catalogo">
+    <div class="section-title">
+        <h2>Catálogo RSF-PHONE</h2>
+
+        <select id="filtroCategoria" onchange="mostrarProductos()">
+            <option value="">Todas las categorías</option>
+            <option>Pantallas</option>
+            <option>Baterías</option>
+            <option>Puerto de carga</option>
+            <option>Cámaras</option>
+            <option>Audio</option>
+            <option>Software</option>
+            <option>Diagnóstico</option>
+            <option>Mantenimiento</option>
+        </select>
+    </div>
+
+    <div class="grid" id="listaProductos"></div>
+</section>
+
+<section class="categories page-section" id="servicios">
+    <h2>Servicios principales</h2>
+
+    <div class="category-grid">
+        <div onclick="filtrarCategoria('Pantallas')">📲<span>Pantallas</span></div>
+        <div onclick="filtrarCategoria('Baterías')">🔋<span>Baterías</span></div>
+        <div onclick="filtrarCategoria('Puerto de carga')">🔌<span>Carga</span></div>
+        <div onclick="filtrarCategoria('Cámaras')">📷<span>Cámaras</span></div>
+        <div onclick="filtrarCategoria('Audio')">🔊<span>Audio</span></div>
+        <div onclick="filtrarCategoria('Software')">🔐<span>Software</span></div>
+    </div>
+</section>
+
+<section class="form-section page-section" id="formulario">
+    <h2>Agregar / editar servicio</h2>
+
+    <input type="hidden" id="editIndex">
+
+    <label>Nombre del servicio</label>
+    <input id="nombre" placeholder="Ej. Cambio de pantalla iPhone">
+
+    <label>Categoría</label>
+    <select id="categoria">
+        <option>Pantallas</option>
+        <option>Baterías</option>
+        <option>Puerto de carga</option>
+        <option>Cámaras</option>
+        <option>Audio</option>
+        <option>Software</option>
+        <option>Diagnóstico</option>
+        <option>Mantenimiento</option>
+    </select>
+
+    <label>Descripción</label>
+    <textarea id="descripcion" rows="4" placeholder="Describe el servicio"></textarea>
+
+    <label>Precio estimado</label>
+    <input id="precio" type="number" placeholder="Ej. 350">
+
+    <label>Imagen</label>
+    <select id="imagen">
+        <option value="img/pantalla.jpg">Pantalla</option>
+        <option value="img/bateria.jpg">Batería</option>
+        <option value="img/carga.jpg">Puerto de carga</option>
+        <option value="img/camara.jpg">Cámara</option>
+        <option value="img/audio.jpg">Audio</option>
+        <option value="img/software.jpg">Software</option>
+    </select>
+
+    <div class="buttons">
+        <button class="btn-save" onclick="guardarProducto()">Guardar</button>
+        <button class="btn-clear" onclick="limpiarFormulario()">Limpiar</button>
+    </div>
+</section>
+
+<section class="carrito-section page-section oculto" id="carrito">
+    <h2>Carrito de cotización</h2>
+    <p class="carrito-texto">Servicios seleccionados para cotizar.</p>
+
+    <div id="listaCarrito"></div>
+
+    <div class="total-box">
+        <h3>Total estimado:</h3>
+        <span id="totalCarrito">Q0</span>
+    </div>
+
+    <div class="payment-box">
+        <div class="payment-title">
+            <h3>Datos de pago</h3>
+            <p>Completa la información de la tarjeta para finalizar la compra.</p>
+        </div>
+
+        <div class="card-preview">
+            <div class="card-top">
+                <span>RSF-PHONE</span>
+                <span>💳</span>
+            </div>
+
+            <div class="card-number" id="vistaNumeroTarjeta">
+                **** **** **** ****
+            </div>
+
+            <div class="card-bottom">
+                <div>
+                    <small>Titular</small>
+                    <strong id="vistaTitular">NOMBRE APELLIDO</strong>
+                </div>
+
+                <div>
+                    <small>Vence</small>
+                    <strong id="vistaFecha">MM/AA</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="payment-form">
+            <label>Nombre del titular</label>
+            <input 
+                id="titularTarjeta" 
+                type="text" 
+                placeholder="Ej. Victor García"
+                oninput="actualizarVistaTarjeta()"
+            >
+
+            <label>Número de tarjeta</label>
+            <input 
+                id="numeroTarjeta" 
+                type="text" 
+                maxlength="19"
+                placeholder="0000 0000 0000 0000"
+                oninput="formatearNumeroTarjeta(); actualizarVistaTarjeta();"
+            >
+
+            <div class="payment-row">
+                <div>
+                    <label>Fecha de vencimiento</label>
+                    <input 
+                        id="fechaTarjeta" 
+                        type="text" 
+                        maxlength="5"
+                        placeholder="MM/AA"
+                        oninput="formatearFechaTarjeta(); actualizarVistaTarjeta();"
+                    >
+                </div>
+
+                <div>
+                    <label>CVV</label>
+                    <input 
+                        id="cvvTarjeta" 
+                        type="password" 
+                        maxlength="3"
+                        placeholder="123"
+                    >
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="buttons">
+        <button class="btn-save" onclick="finalizarCompra()">
+            Pagar / finalizar compra
+        </button>
+
+        <button class="btn-clear" onclick="vaciarCarrito()">
+            Vaciar carrito
+        </button>
+    </div>
+</section>
+
+<footer class="page-section" id="contacto">
+    <h3>RSF-PHONE</h3>
+    <p>Servicio técnico especializado en Android e iOS.</p>
+    <span>© 2026 RSF-PHONE | Sprint 1</span>
+</footer>
+
+<script src="js/script.js"></script>
+</body>
+</html>
