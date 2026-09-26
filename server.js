@@ -1,40 +1,64 @@
 const express = require("express");
 const cors = require("cors");
 const oracledb = require("oracledb");
+const path = require("path");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
+// Permite que Render muestre index.html, css, js e img
+app.use(express.static(__dirname));
+
 const dbConfig = {
-  user: "SYSTEM",
-  password: "TU_PASSWORD",
-  connectString: "localhost/XEPDB1"
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    connectString: process.env.DB_CONNECT_STRING
 };
 
 app.get("/servicios", async (req, res) => {
-  let connection;
+    let connection;
 
-  try {
-    connection = await oracledb.getConnection(dbConfig);
+    try {
+        connection = await oracledb.getConnection(dbConfig);
 
-    const result = await connection.execute(
-      `SELECT id_servicio, nombre, categoria, descripcion, precio, icono
-       FROM servicios
-       ORDER BY id_servicio`,
-      [],
-      { outFormat: oracledb.OUT_FORMAT_OBJECT }
-    );
+        const result = await connection.execute(
+            `SELECT id_servicio,
+                    nombre,
+                    categoria,
+                    descripcion,
+                    precio,
+                    icono
+             FROM servicios
+             ORDER BY id_servicio`,
+            [],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT }
+        );
 
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  } finally {
-    if (connection) await connection.close();
-  }
+        res.json(result.rows);
+
+    } catch (error) {
+        console.error("Error Oracle:", error);
+        res.status(500).json({
+            error: error.message
+        });
+
+    } finally {
+        if (connection) {
+            await connection.close();
+        }
+    }
 });
 
-app.listen(3000, () => {
-  console.log("Servidor corriendo en http://localhost:3000");
+// Página principal
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "index.html"));
+});
+
+// Render asigna automáticamente el puerto
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Servidor corriendo en puerto ${PORT}`);
 });
