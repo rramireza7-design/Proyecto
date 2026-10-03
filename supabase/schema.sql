@@ -257,6 +257,8 @@ on conflict (id) do update set
     sort_order = excluded.sort_order,
     updated_at = now();
 
-grant usage on schema public to anon, authenticated;
+grant usage on schema public to anon, authenticated, service_role;
 grant select on public.services to anon, authenticated;
 grant select on public.profiles, public.orders, public.order_items to authenticated;
+grant all privileges on table public.profiles, public.services, public.orders, public.order_items to service_role;
+grant usage, select on all sequences in schema public to service_role;
