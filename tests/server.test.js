@@ -1,5 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+
+process.env.OWNER_USERNAME = "admin";
+process.env.OWNER_PASSWORD = "contrasena-local-segura";
+process.env.SESSION_SECRET = "secreto-de-pruebas-con-mas-de-32-caracteres";
+
 const { app, consolidateItems, createSlug, validateServiceInput } = require("../server");
 
 let server;
@@ -49,6 +54,36 @@ test("GET /api/health informa el estado del servidor", async () => {
     assert.equal(response.status, 200);
     assert.equal(body.ok, true);
     assert.equal(typeof body.authConfigured, "boolean");
+    assert.equal(body.localOwnerConfigured, true);
+});
+
+test("el propietario puede iniciar y cerrar una sesión local segura", async () => {
+    const loginResponse = await fetch(`${baseUrl}/api/auth/local/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "admin", password: "contrasena-local-segura" })
+    });
+    const loginBody = await loginResponse.json();
+    const cookie = loginResponse.headers.get("set-cookie").split(";")[0];
+
+    assert.equal(loginResponse.status, 200);
+    assert.equal(loginBody.role, "owner");
+    assert.equal(loginBody.authType, "local");
+    assert.match(cookie, /^rsf_owner_session=/);
+
+    const meResponse = await fetch(`${baseUrl}/api/me`, { headers: { Cookie: cookie } });
+    const me = await meResponse.json();
+    assert.equal(meResponse.status, 200);
+    assert.equal(me.name, "admin");
+    assert.equal(me.role, "owner");
+    assert.equal(me.authType, "local");
+
+    const logoutResponse = await fetch(`${baseUrl}/api/auth/local/logout`, {
+        method: "POST",
+        headers: { Cookie: cookie }
+    });
+    assert.equal(logoutResponse.status, 200);
+    assert.match(logoutResponse.headers.get("set-cookie"), /Max-Age=0/);
 });
 
 test("GET /api/services entrega el catálogo de respaldo sin credenciales", async () => {
@@ -75,11 +110,11 @@ test("los archivos internos no se sirven públicamente", async () => {
     }
 });
 
-test("las rutas privadas no funcionan sin autenticación configurada", async () => {
+test("las rutas privadas rechazan solicitudes sin sesión", async () => {
     const response = await fetch(`${baseUrl}/api/orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items: [] })
     });
-    assert.equal(response.status, 503);
+    assert.equal(response.status, 401);
 });

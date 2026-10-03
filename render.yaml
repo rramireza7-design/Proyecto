@@ -15,5 +15,9 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: OWNER_EMAIL
+      - key: OWNER_USERNAME
+        value: admin
+      - key: OWNER_PASSWORD
         sync: false
+      - key: SESSION_SECRET
+        generateValue: true

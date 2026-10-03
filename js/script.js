@@ -16,8 +16,10 @@ const state = {
     session: null,
     user: null,
     role: "guest",
+    authType: "guest",
     supabase: null,
     authConfigured: false,
+    localOwnerConfigured: false,
     persistent: false,
     toastTimer: null
 };
@@ -93,35 +95,46 @@ async function loadConfiguration() {
     try {
         const config = await api("/api/config");
         state.authConfigured = Boolean(config.authConfigured);
-        byId("configurationBanner").classList.toggle("hidden", state.authConfigured);
+        state.localOwnerConfigured = Boolean(config.localOwnerConfigured);
 
-        if (!state.authConfigured || !window.supabase?.createClient) return;
+        if (state.authConfigured && window.supabase?.createClient) {
+            state.supabase = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
+                auth: { persistSession: true, detectSessionInUrl: true }
+            });
 
-        state.supabase = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
-            auth: { persistSession: true, detectSessionInUrl: true }
-        });
+            const { data } = await state.supabase.auth.getSession();
+            if (data.session) {
+                await applySupabaseSession(data.session);
+            } else {
+                await restoreLocalSession();
+            }
 
-        const { data } = await state.supabase.auth.getSession();
-        await applySession(data.session);
-
-        state.supabase.auth.onAuthStateChange((event, session) => {
-            window.setTimeout(() => applySession(session), 0);
-        });
+            state.supabase.auth.onAuthStateChange((event, session) => {
+                window.setTimeout(() => {
+                    if (session) applySupabaseSession(session);
+                    else if (state.authType === "supabase") setGuestSession();
+                }, 0);
+            });
+        } else {
+            await restoreLocalSession();
+        }
     } catch (error) {
-        byId("configurationBanner").classList.remove("hidden");
         console.error(error);
+        await restoreLocalSession();
     }
 }
 
-async function applySession(session) {
+async function applySupabaseSession(session) {
     state.session = session;
     state.user = null;
-    state.role = session ? "customer" : "guest";
+    state.role = "guest";
+    state.authType = session ? "supabase" : "guest";
 
     if (session) {
         try {
             state.user = await api("/api/me");
             state.role = state.user.role;
+            state.authType = state.user.authType || "supabase";
         } catch (error) {
             showToast(error.message, "error");
         }
@@ -131,8 +144,35 @@ async function applySession(session) {
     updateCheckoutVisibility();
 }
 
+async function restoreLocalSession() {
+    try {
+        const response = await fetch("/api/me", { headers: { Accept: "application/json" } });
+        if (!response.ok) return setGuestSession();
+        const user = await response.json();
+        if (user.authType !== "local") return setGuestSession();
+
+        state.session = null;
+        state.user = user;
+        state.role = "owner";
+        state.authType = "local";
+        updateAccountUI();
+        updateCheckoutVisibility();
+    } catch {
+        setGuestSession();
+    }
+}
+
+function setGuestSession() {
+    state.session = null;
+    state.user = null;
+    state.role = "guest";
+    state.authType = "guest";
+    updateAccountUI();
+    updateCheckoutVisibility();
+}
+
 function updateAccountUI() {
-    const signedIn = Boolean(state.session && state.user);
+    const signedIn = Boolean(state.user);
     byId("loginButton").classList.toggle("hidden", signedIn);
     byId("profileButton").classList.toggle("hidden", !signedIn);
     byId("accountMenu").classList.add("hidden");
@@ -155,7 +195,7 @@ function updateAccountUI() {
     if (!signedIn) return;
 
     byId("profileName").textContent = state.user.name?.split(" ")[0] || "Mi cuenta";
-    byId("accountEmail").textContent = state.user.email;
+    byId("accountEmail").textContent = state.user.email || `Usuario local: ${state.user.name}`;
     byId("accountRole").textContent = state.role === "owner" ? "Propietario" : "Cliente";
     byId("accountRole").classList.toggle("owner", state.role === "owner");
 
@@ -173,7 +213,7 @@ function updateAccountUI() {
 
 async function loginWithGoogle() {
     if (!state.authConfigured || !state.supabase) {
-        showToast("El acceso con Google quedará disponible al conectar Supabase en Render.", "error");
+        showAuthMessage("El acceso con Google necesita la configuración OAuth de Supabase.");
         return;
     }
 
@@ -186,13 +226,131 @@ async function loginWithGoogle() {
     if (error) showToast(error.message, "error");
 }
 
+function showAuthMessage(message, type = "error") {
+    const box = byId("authMessage");
+    box.textContent = message;
+    box.classList.toggle("success", type === "success");
+    box.classList.remove("hidden");
+}
+
+function clearAuthMessage() {
+    const box = byId("authMessage");
+    box.textContent = "";
+    box.classList.remove("success");
+    box.classList.add("hidden");
+}
+
+function selectAuthTab(tabName) {
+    const registering = tabName === "register";
+    document.querySelectorAll("[data-auth-tab]").forEach((button) => {
+        const active = button.dataset.authTab === tabName;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
+    });
+    byId("loginForm").classList.toggle("hidden", registering);
+    byId("registerForm").classList.toggle("hidden", !registering);
+    byId("authTitle").textContent = registering ? "Crea tu cuenta" : "Bienvenido de nuevo";
+    byId("authSubtitle").textContent = registering
+        ? "Regístrate para reservar y consultar tus servicios."
+        : "Ingresa para administrar o reservar tu servicio.";
+    clearAuthMessage();
+}
+
+async function loginWithCredentials(event) {
+    event.preventDefault();
+    clearAuthMessage();
+    const identifier = byId("loginIdentifier").value.trim();
+    const password = byId("loginPassword").value;
+    const submit = event.submitter;
+
+    try {
+        submit.disabled = true;
+        submit.textContent = "Ingresando…";
+
+        if (identifier.includes("@")) {
+            if (!state.authConfigured || !state.supabase) {
+                throw new Error("El acceso de clientes todavía necesita la configuración de Supabase.");
+            }
+            const { data, error } = await state.supabase.auth.signInWithPassword({ email: identifier, password });
+            if (error) throw error;
+            await applySupabaseSession(data.session);
+        } else {
+            const user = await api("/api/auth/local/login", {
+                method: "POST",
+                body: JSON.stringify({ username: identifier, password })
+            });
+            state.session = null;
+            state.user = user;
+            state.role = "owner";
+            state.authType = "local";
+            updateAccountUI();
+            updateCheckoutVisibility();
+        }
+
+        byId("loginModal").close();
+        byId("loginForm").reset();
+        showToast(state.role === "owner" ? "Sesión de propietario iniciada." : "Sesión iniciada correctamente.");
+        if (state.role === "owner") navigateTo("admin");
+    } catch (error) {
+        showAuthMessage(error.message);
+    } finally {
+        submit.disabled = false;
+        submit.textContent = "Ingresar";
+    }
+}
+
+async function registerCustomer(event) {
+    event.preventDefault();
+    clearAuthMessage();
+    const name = byId("registerName").value.trim();
+    const email = byId("registerEmail").value.trim();
+    const password = byId("registerPassword").value;
+    const confirmation = byId("registerPasswordConfirm").value;
+    const submit = event.submitter;
+
+    try {
+        if (!state.authConfigured || !state.supabase) {
+            throw new Error("La creación de clientes necesita la configuración de Supabase.");
+        }
+        if (name.length < 2) throw new Error("Escribe tu nombre completo.");
+        if (password.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
+        if (password !== confirmation) throw new Error("Las contraseñas no coinciden.");
+
+        submit.disabled = true;
+        submit.textContent = "Creando cuenta…";
+        const { data, error } = await state.supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                data: { full_name: name },
+                emailRedirectTo: `${window.location.origin}${window.location.pathname}`
+            }
+        });
+        if (error) throw error;
+
+        if (data.session) {
+            await applySupabaseSession(data.session);
+            byId("loginModal").close();
+            showToast("Cuenta creada correctamente.");
+        } else {
+            showAuthMessage("Cuenta creada. Revisa tu correo para confirmarla y después ingresa.", "success");
+            byId("registerForm").reset();
+        }
+    } catch (error) {
+        showAuthMessage(error.message);
+    } finally {
+        submit.disabled = false;
+        submit.textContent = "Crear mi cuenta";
+    }
+}
+
 async function logout() {
-    if (state.supabase) await state.supabase.auth.signOut();
-    state.session = null;
-    state.user = null;
-    state.role = "guest";
-    updateAccountUI();
-    updateCheckoutVisibility();
+    if (state.authType === "local") {
+        await api("/api/auth/local/logout", { method: "POST" });
+    } else if (state.supabase) {
+        await state.supabase.auth.signOut();
+    }
+    setGuestSession();
     showToast("Sesión cerrada.");
 }
 
@@ -209,8 +367,8 @@ async function loadServices(showFeedback = false) {
         }));
         state.persistent = Boolean(result.persistent);
         byId("stockNotice").textContent = state.persistent
-            ? "Stock conectado a la base de datos. Al actualizar el catálogo verás la existencia más reciente."
-            : "Vista demostrativa: conecta Supabase para compartir el stock entre todos los visitantes.";
+            ? "Disponibilidad consultada en tiempo real. Actualiza el catálogo para ver el stock más reciente."
+            : "Disponibilidad actual del catálogo.";
         reconcileCart();
         renderProducts();
         renderCart();
@@ -368,14 +526,20 @@ function renderCart() {
 }
 
 function updateCheckoutVisibility() {
-    const signedIn = Boolean(state.session && state.user);
-    byId("loginGate").classList.toggle("hidden", signedIn);
-    byId("checkoutForm").classList.toggle("hidden", !signedIn);
+    const customerSignedIn = state.authType === "supabase" && Boolean(state.session && state.user);
+    const ownerSignedIn = state.authType === "local" && state.role === "owner";
+    byId("loginGate").classList.toggle("hidden", customerSignedIn || ownerSignedIn);
+    byId("ownerCheckoutNote").classList.toggle("hidden", !ownerSignedIn);
+    byId("checkoutForm").classList.toggle("hidden", !customerSignedIn);
 }
 
 function navigateTo(sectionId) {
     if (sectionId === "pedidos") {
-        if (!state.session) {
+        if (state.authType === "local") {
+            showToast("La cuenta del propietario administra las citas desde su panel.");
+            return navigateTo("admin");
+        }
+        if (state.authType !== "supabase" || !state.session) {
             openLoginModal();
             return;
         }
@@ -409,7 +573,8 @@ function selectCategory(category) {
     navigateTo("catalogo");
 }
 
-function openLoginModal() {
+function openLoginModal(tabName = "login") {
+    selectAuthTab(tabName);
     const modal = byId("loginModal");
     if (!modal.open) modal.showModal();
 }
@@ -455,7 +620,7 @@ function validateTestCard() {
 
 async function submitCheckout(event) {
     event.preventDefault();
-    if (!state.session) return openLoginModal();
+    if (state.authType !== "supabase" || !state.session) return openLoginModal();
     if (!state.persistent) {
         showToast("Conecta Supabase para guardar la cita y actualizar el stock compartido.", "error");
         return;
@@ -758,6 +923,12 @@ function bindEvents() {
         const loginButton = event.target.closest("[data-login-google]");
         if (loginButton) loginWithGoogle();
 
+        const openAuthButton = event.target.closest("[data-open-auth]");
+        if (openAuthButton) openLoginModal();
+
+        const authTab = event.target.closest("[data-auth-tab]");
+        if (authTab) selectAuthTab(authTab.dataset.authTab);
+
         const closeButton = event.target.closest("[data-close-modal]");
         if (closeButton) closeButton.closest("dialog")?.close();
 
@@ -776,6 +947,8 @@ function bindEvents() {
     byId("filtroCategoria").addEventListener("change", renderProducts);
     byId("refreshCatalogButton").addEventListener("click", () => loadServices(true));
     byId("loginButton").addEventListener("click", openLoginModal);
+    byId("loginForm").addEventListener("submit", loginWithCredentials);
+    byId("registerForm").addEventListener("submit", registerCustomer);
     byId("logoutButton").addEventListener("click", logout);
     byId("profileButton").addEventListener("click", () => {
         const menu = byId("accountMenu");

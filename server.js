@@ -1,5 +1,6 @@
 const express = require("express");
 const path = require("path");
+const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
 const fallbackServices = require("./data/services.json");
 
@@ -8,9 +9,13 @@ const PORT = Number(process.env.PORT) || 3000;
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const OWNER_EMAIL = (process.env.OWNER_EMAIL || "").trim().toLowerCase();
+const OWNER_USERNAME = normalizeCredential(process.env.OWNER_USERNAME || "admin");
+const OWNER_PASSWORD = process.env.OWNER_PASSWORD || "";
+const SESSION_SECRET = process.env.SESSION_SECRET || "";
 const databaseConfigured = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const authConfigured = Boolean(databaseConfigured && SUPABASE_ANON_KEY);
+const localOwnerConfigured = Boolean(OWNER_USERNAME && OWNER_PASSWORD.length >= 12 && SESSION_SECRET.length >= 32);
+const ownerLoginAttempts = new Map();
 
 let adminClient;
 
@@ -24,6 +29,73 @@ function getAdminClient() {
     }
 
     return adminClient;
+}
+
+function normalizeCredential(value) {
+    return typeof value === "string" ? value.trim().toLowerCase().slice(0, 80) : "";
+}
+
+function safeEqual(left, right) {
+    const leftHash = crypto.createHash("sha256").update(String(left)).digest();
+    const rightHash = crypto.createHash("sha256").update(String(right)).digest();
+    return crypto.timingSafeEqual(leftHash, rightHash);
+}
+
+function signOwnerSession() {
+    const payload = Buffer.from(JSON.stringify({
+        sub: "local-owner",
+        username: OWNER_USERNAME,
+        role: "owner",
+        exp: Math.floor(Date.now() / 1000) + (8 * 60 * 60)
+    })).toString("base64url");
+    const signature = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("base64url");
+    return `${payload}.${signature}`;
+}
+
+function verifyOwnerSession(token) {
+    if (!localOwnerConfigured || typeof token !== "string") return null;
+    const [payload, signature] = token.split(".");
+    if (!payload || !signature) return null;
+    const expected = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("base64url");
+    if (!safeEqual(signature, expected)) return null;
+
+    try {
+        const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+        if (decoded.sub !== "local-owner" || decoded.role !== "owner" || decoded.exp <= Math.floor(Date.now() / 1000)) return null;
+        return decoded;
+    } catch {
+        return null;
+    }
+}
+
+function readCookie(req, name) {
+    const cookieHeader = req.get("cookie") || "";
+    const cookie = cookieHeader.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
+    return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : "";
+}
+
+function ownerCookie(token, maxAge = 8 * 60 * 60) {
+    const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+    return `rsf_owner_session=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+}
+
+function ownerLoginRateLimit(req, res, next) {
+    const key = req.ip || "unknown";
+    const now = Date.now();
+    const record = ownerLoginAttempts.get(key);
+
+    if (!record || record.resetAt <= now) {
+        ownerLoginAttempts.set(key, { count: 1, resetAt: now + (15 * 60 * 1000) });
+        return next();
+    }
+
+    if (record.count >= 10) {
+        res.setHeader("Retry-After", String(Math.ceil((record.resetAt - now) / 1000)));
+        return res.status(429).json({ error: "Demasiados intentos. Espera unos minutos antes de volver a intentar." });
+    }
+
+    record.count += 1;
+    next();
 }
 
 app.disable("x-powered-by");
@@ -125,14 +197,25 @@ function consolidateItems(items) {
 }
 
 async function authenticate(req, res, next) {
-    if (!authConfigured) {
-        return res.status(503).json({ error: "La autenticación todavía no está configurada en el servidor." });
+    const ownerSession = verifyOwnerSession(readCookie(req, "rsf_owner_session"));
+    if (ownerSession) {
+        req.user = {
+            id: "local-owner",
+            email: "",
+            user_metadata: { name: OWNER_USERNAME }
+        };
+        req.role = "owner";
+        req.authType = "local";
+        return next();
     }
 
     const authorization = req.get("authorization") || "";
     const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
     if (!token) {
-        return res.status(401).json({ error: "Debes iniciar sesión con Google." });
+        return res.status(401).json({ error: "Debes iniciar sesión." });
+    }
+    if (!authConfigured) {
+        return res.status(503).json({ error: "El acceso de clientes todavía no está configurado." });
     }
 
     const supabase = getAdminClient();
@@ -144,13 +227,12 @@ async function authenticate(req, res, next) {
     const user = data.user;
     const email = (user.email || "").toLowerCase();
     const metadata = user.user_metadata || {};
-    const ownerByEnvironment = Boolean(OWNER_EMAIL && email === OWNER_EMAIL);
     const { data: existingProfile } = await supabase
         .from("profiles")
         .select("role")
         .eq("id", user.id)
         .maybeSingle();
-    const role = ownerByEnvironment || existingProfile?.role === "owner" ? "owner" : "customer";
+    const role = existingProfile?.role === "owner" ? "owner" : "customer";
 
     await supabase.from("profiles").upsert({
         id: user.id,
@@ -163,6 +245,7 @@ async function authenticate(req, res, next) {
 
     req.user = user;
     req.role = role;
+    req.authType = "supabase";
     next();
 }
 
@@ -173,13 +256,27 @@ function requireOwner(req, res, next) {
     next();
 }
 
+function requireCustomer(req, res, next) {
+    if (req.authType !== "supabase") {
+        return res.status(403).json({ error: "Para reservar, entra como cliente con correo o Google." });
+    }
+    next();
+}
+
+function requireDatabase(req, res, next) {
+    if (!databaseConfigured) {
+        return res.status(503).json({ error: "La base de datos todavía no está configurada." });
+    }
+    next();
+}
+
 app.get("/api/health", (req, res) => {
-    res.json({ ok: true, databaseConfigured, authConfigured, timestamp: new Date().toISOString() });
+    res.json({ ok: true, databaseConfigured, authConfigured, localOwnerConfigured, timestamp: new Date().toISOString() });
 });
 
 app.get("/api/config", (req, res) => {
     res.setHeader("Cache-Control", "no-store");
-    res.json({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY, authConfigured });
+    res.json({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY, authConfigured, localOwnerConfigured });
 });
 
 app.get("/api/services", async (req, res) => {
@@ -203,6 +300,27 @@ app.get("/api/services", async (req, res) => {
     res.json({ services: data, persistent: true });
 });
 
+app.post("/api/auth/local/login", ownerLoginRateLimit, (req, res) => {
+    if (!localOwnerConfigured) {
+        return res.status(503).json({ error: "El acceso del propietario todavía no está configurado." });
+    }
+
+    const username = normalizeCredential(req.body.username);
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    if (!safeEqual(username, OWNER_USERNAME) || !safeEqual(password, OWNER_PASSWORD)) {
+        return res.status(401).json({ error: "Usuario o contraseña incorrectos." });
+    }
+
+    ownerLoginAttempts.delete(req.ip || "unknown");
+    res.setHeader("Set-Cookie", ownerCookie(signOwnerSession()));
+    res.json({ name: OWNER_USERNAME, email: "", role: "owner", authType: "local" });
+});
+
+app.post("/api/auth/local/logout", (req, res) => {
+    res.setHeader("Set-Cookie", ownerCookie("", 0));
+    res.json({ ok: true });
+});
+
 app.get("/api/me", authenticate, (req, res) => {
     const metadata = req.user.user_metadata || {};
     res.json({
@@ -210,11 +328,12 @@ app.get("/api/me", authenticate, (req, res) => {
         email: req.user.email,
         name: metadata.full_name || metadata.name || req.user.email,
         avatarUrl: metadata.avatar_url || metadata.picture || "",
-        role: req.role
+        role: req.role,
+        authType: req.authType
     });
 });
 
-app.post("/api/services", authenticate, requireOwner, async (req, res) => {
+app.post("/api/services", authenticate, requireOwner, requireDatabase, async (req, res) => {
     try {
         const service = validateServiceInput(req.body);
         const { data, error } = await getAdminClient().from("services").insert(service).select().single();
@@ -225,7 +344,7 @@ app.post("/api/services", authenticate, requireOwner, async (req, res) => {
     }
 });
 
-app.patch("/api/services/:id", authenticate, requireOwner, async (req, res) => {
+app.patch("/api/services/:id", authenticate, requireOwner, requireDatabase, async (req, res) => {
     try {
         const service = validateServiceInput(req.body);
         const { data, error } = await getAdminClient()
@@ -241,7 +360,7 @@ app.patch("/api/services/:id", authenticate, requireOwner, async (req, res) => {
     }
 });
 
-app.delete("/api/services/:id", authenticate, requireOwner, async (req, res) => {
+app.delete("/api/services/:id", authenticate, requireOwner, requireDatabase, async (req, res) => {
     const { data, error } = await getAdminClient()
         .from("services")
         .update({ active: false, updated_at: new Date().toISOString() })
@@ -253,7 +372,7 @@ app.delete("/api/services/:id", authenticate, requireOwner, async (req, res) => 
     res.json({ ok: true, id: data.id });
 });
 
-app.post("/api/orders", authenticate, async (req, res) => {
+app.post("/api/orders", authenticate, requireCustomer, requireDatabase, async (req, res) => {
     try {
         const items = consolidateItems(req.body.items);
         const appointmentAt = new Date(req.body.appointmentAt);
@@ -294,7 +413,7 @@ app.post("/api/orders", authenticate, async (req, res) => {
     }
 });
 
-app.get("/api/orders", authenticate, async (req, res) => {
+app.get("/api/orders", authenticate, requireCustomer, requireDatabase, async (req, res) => {
     const { data, error } = await getAdminClient()
         .from("orders")
         .select("id,receipt_number,total,appointment_at,device_model,status,payment_brand,payment_last4,created_at,order_items(service_name,unit_price,quantity,line_total)")
@@ -306,7 +425,7 @@ app.get("/api/orders", authenticate, async (req, res) => {
     res.json(data);
 });
 
-app.get("/api/admin/orders", authenticate, requireOwner, async (req, res) => {
+app.get("/api/admin/orders", authenticate, requireOwner, requireDatabase, async (req, res) => {
     const { data, error } = await getAdminClient()
         .from("orders")
         .select("id,receipt_number,customer_email,total,appointment_at,device_model,phone,notes,status,payment_brand,payment_last4,created_at,order_items(service_name,unit_price,quantity,line_total)")
@@ -317,7 +436,7 @@ app.get("/api/admin/orders", authenticate, requireOwner, async (req, res) => {
     res.json(data);
 });
 
-app.patch("/api/admin/orders/:id/status", authenticate, requireOwner, async (req, res) => {
+app.patch("/api/admin/orders/:id/status", authenticate, requireOwner, requireDatabase, async (req, res) => {
     const status = normalizeText(req.body.status, 20);
     const allowedStatuses = ["scheduled", "confirmed", "completed", "cancelled"];
     if (!allowedStatuses.includes(status)) {

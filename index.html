@@ -63,11 +63,6 @@
         </nav>
     </header>
 
-    <div class="configuration-banner hidden" id="configurationBanner" role="status">
-        <strong>Catálogo en modo demostración.</strong>
-        El propietario debe conectar Supabase para habilitar Google, stock compartido y citas.
-    </div>
-
     <main id="contenido">
         <section class="hero page-section" id="inicio">
             <div class="hero-copy">
@@ -155,8 +150,13 @@
 
             <div class="login-gate" id="loginGate">
                 <span class="gate-icon" aria-hidden="true">🔐</span>
-                <div><h3>Inicia sesión para reservar</h3><p>Usaremos tu cuenta de Google para identificar tu cita y guardar la factura.</p></div>
-                <button class="google-button" type="button" data-login-google><span>G</span> Continuar con Google</button>
+                <div><h3>Inicia sesión para reservar</h3><p>Entra con tu correo y contraseña o continúa con tu cuenta de Google.</p></div>
+                <button class="primary-button" type="button" data-open-auth>Iniciar o crear cuenta</button>
+            </div>
+
+            <div class="login-gate hidden" id="ownerCheckoutNote">
+                <span class="gate-icon" aria-hidden="true">🛠️</span>
+                <div><h3>Estás en la cuenta del propietario</h3><p>Para reservar como cliente, cierra esta sesión y entra con correo o Google.</p></div>
             </div>
 
             <form class="checkout-panel hidden" id="checkoutForm">
@@ -255,13 +255,49 @@
         <span>© 2026 RSF-PHONE</span>
     </footer>
 
-    <dialog class="modal" id="loginModal">
+    <dialog class="modal auth-modal" id="loginModal">
         <button class="modal-close" type="button" data-close-modal aria-label="Cerrar">×</button>
-        <span class="modal-icon" aria-hidden="true">🔐</span>
-        <h2>Entra a RSF-PHONE</h2>
-        <p>Una sola cuenta para reservar, recibir facturas y consultar tus citas.</p>
-        <button class="google-button wide" type="button" data-login-google><span>G</span> Continuar con Google</button>
-        <small>Al continuar, Google creará tu cuenta si es tu primera visita.</small>
+        <div class="auth-brand"><span class="brand-mark" aria-hidden="true">R</span><strong>RSF-PHONE</strong></div>
+        <h2 id="authTitle">Bienvenido de nuevo</h2>
+        <p id="authSubtitle">Ingresa para administrar o reservar tu servicio.</p>
+
+        <div class="auth-tabs" role="tablist" aria-label="Acceso a cuenta">
+            <button class="active" type="button" role="tab" aria-selected="true" data-auth-tab="login">Ingresar</button>
+            <button type="button" role="tab" aria-selected="false" data-auth-tab="register">Crear cuenta</button>
+        </div>
+
+        <div class="auth-message hidden" id="authMessage" role="alert"></div>
+
+        <form class="auth-form" id="loginForm">
+            <label for="loginIdentifier">Correo o usuario</label>
+            <input id="loginIdentifier" name="identifier" required autocomplete="username" placeholder="correo@ejemplo.com o admin">
+
+            <label for="loginPassword">Contraseña</label>
+            <input id="loginPassword" name="password" type="password" required autocomplete="current-password" placeholder="Tu contraseña">
+
+            <button class="primary-button auth-submit" type="submit">Ingresar</button>
+            <small>El propietario ingresa aquí con su usuario local. Los clientes usan su correo.</small>
+        </form>
+
+        <form class="auth-form hidden" id="registerForm">
+            <label for="registerName">Nombre completo</label>
+            <input id="registerName" name="name" required autocomplete="name" maxlength="120" placeholder="Tu nombre">
+
+            <label for="registerEmail">Correo electrónico</label>
+            <input id="registerEmail" name="email" type="email" required autocomplete="email" placeholder="correo@ejemplo.com">
+
+            <label for="registerPassword">Contraseña</label>
+            <input id="registerPassword" name="password" type="password" required autocomplete="new-password" minlength="8" placeholder="Mínimo 8 caracteres">
+
+            <label for="registerPasswordConfirm">Confirmar contraseña</label>
+            <input id="registerPasswordConfirm" name="passwordConfirm" type="password" required autocomplete="new-password" minlength="8" placeholder="Repite tu contraseña">
+
+            <button class="primary-button auth-submit" type="submit">Crear mi cuenta</button>
+        </form>
+
+        <div class="auth-divider"><span>o continúa con</span></div>
+        <button class="google-button wide" type="button" data-login-google><span>G</span> Google</button>
+        <small class="auth-privacy">Google sirve tanto para ingresar como para crear una cuenta de cliente.</small>
     </dialog>
 
     <dialog class="modal receipt-modal" id="receiptModal">
