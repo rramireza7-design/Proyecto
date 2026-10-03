@@ -78,6 +78,9 @@ test("el propietario puede iniciar y cerrar una sesión local segura", async () 
     assert.equal(loginBody.role, "owner");
     assert.equal(loginBody.authType, "local");
     assert.match(cookie, /^rsf_owner_session=/);
+    assert.match(loginResponse.headers.get("set-cookie"), /HttpOnly/);
+    assert.match(loginResponse.headers.get("set-cookie"), /SameSite=Strict/);
+    assert.match(loginResponse.headers.get("cache-control"), /no-store/);
 
     const meResponse = await fetch(`${baseUrl}/api/me`, { headers: { Cookie: cookie } });
     const me = await meResponse.json();
@@ -108,7 +111,12 @@ test("los recursos principales y sus imágenes responden", async () => {
         const response = await fetch(`${baseUrl}${resource}`);
         assert.equal(response.status, 200, resource);
         assert.equal(response.headers.get("x-content-type-options"), "nosniff");
-        if (resource === "/") assert.match(response.headers.get("content-security-policy") || "", /img-src[^;]*blob:/);
+        if (resource === "/") {
+            assert.equal(response.headers.get("x-frame-options"), "DENY");
+            assert.match(response.headers.get("content-security-policy") || "", /img-src[^;]*blob:/);
+            assert.match(response.headers.get("content-security-policy") || "", /frame-ancestors 'none'/);
+            assert.match(response.headers.get("content-security-policy") || "", /object-src 'none'/);
+        }
     }
 });
 
@@ -144,4 +152,17 @@ test("las rutas privadas rechazan solicitudes sin sesión", async () => {
         body: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])
     });
     assert.equal(uploadResponse.status, 401);
+});
+
+test("las solicitudes mutables de otros sitios se rechazan", async () => {
+    const response = await fetch(`${baseUrl}/api/auth/local/login`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Origin: "https://sitio-malicioso.example",
+            "Sec-Fetch-Site": "cross-site"
+        },
+        body: JSON.stringify({ username: "admin", password: "contrasena-local-segura" })
+    });
+    assert.equal(response.status, 403);
 });

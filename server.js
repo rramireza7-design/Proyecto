@@ -5,6 +5,7 @@ const { createClient } = require("@supabase/supabase-js");
 const fallbackServices = require("./data/services.json");
 
 const app = express();
+app.set("trust proxy", 1);
 const PORT = Number(process.env.PORT) || 3000;
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
@@ -16,6 +17,8 @@ const databaseConfigured = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const authConfigured = Boolean(databaseConfigured && SUPABASE_ANON_KEY);
 const localOwnerConfigured = Boolean(OWNER_USERNAME && OWNER_PASSWORD.length >= 12 && SESSION_SECRET.length >= 32);
 const ownerLoginAttempts = new Map();
+const OWNER_SESSION_SECONDS = 2 * 60 * 60;
+const OWNER_COOKIE_NAME = process.env.NODE_ENV === "production" ? "__Host-rsf_owner_session" : "rsf_owner_session";
 const SERVICE_IMAGES_BUCKET = "service-images";
 const MAX_SERVICE_IMAGE_BYTES = 5 * 1024 * 1024;
 const SERVICE_IMAGE_TYPES = new Map([
@@ -49,11 +52,14 @@ function safeEqual(left, right) {
 }
 
 function signOwnerSession() {
+    const issuedAt = Math.floor(Date.now() / 1000);
     const payload = Buffer.from(JSON.stringify({
         sub: "local-owner",
         username: OWNER_USERNAME,
         role: "owner",
-        exp: Math.floor(Date.now() / 1000) + (8 * 60 * 60)
+        iat: issuedAt,
+        exp: issuedAt + OWNER_SESSION_SECONDS,
+        jti: crypto.randomBytes(16).toString("hex")
     })).toString("base64url");
     const signature = crypto.createHmac("sha256", SESSION_SECRET).update(payload).digest("base64url");
     return `${payload}.${signature}`;
@@ -68,7 +74,7 @@ function verifyOwnerSession(token) {
 
     try {
         const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-        if (decoded.sub !== "local-owner" || decoded.role !== "owner" || decoded.exp <= Math.floor(Date.now() / 1000)) return null;
+        if (decoded.sub !== "local-owner" || decoded.username !== OWNER_USERNAME || decoded.role !== "owner" || decoded.exp <= Math.floor(Date.now() / 1000)) return null;
         return decoded;
     } catch {
         return null;
@@ -78,12 +84,17 @@ function verifyOwnerSession(token) {
 function readCookie(req, name) {
     const cookieHeader = req.get("cookie") || "";
     const cookie = cookieHeader.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
-    return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : "";
+    if (!cookie) return "";
+    try {
+        return decodeURIComponent(cookie.slice(name.length + 1));
+    } catch {
+        return "";
+    }
 }
 
-function ownerCookie(token, maxAge = 8 * 60 * 60) {
+function ownerCookie(token, maxAge = OWNER_SESSION_SECONDS) {
     const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-    return `rsf_owner_session=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+    return `${OWNER_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${maxAge}${secure}`;
 }
 
 function ownerLoginRateLimit(req, res, next) {
@@ -91,12 +102,18 @@ function ownerLoginRateLimit(req, res, next) {
     const now = Date.now();
     const record = ownerLoginAttempts.get(key);
 
+    if (ownerLoginAttempts.size > 1000) {
+        for (const [address, attempt] of ownerLoginAttempts) {
+            if (attempt.resetAt <= now) ownerLoginAttempts.delete(address);
+        }
+    }
+
     if (!record || record.resetAt <= now) {
         ownerLoginAttempts.set(key, { count: 1, resetAt: now + (15 * 60 * 1000) });
         return next();
     }
 
-    if (record.count >= 10) {
+    if (record.count >= 8) {
         res.setHeader("Retry-After", String(Math.ceil((record.resetAt - now) / 1000)));
         return res.status(429).json({ error: "Demasiados intentos. Espera unos minutos antes de volver a intentar." });
     }
@@ -105,17 +122,52 @@ function ownerLoginRateLimit(req, res, next) {
     next();
 }
 
+function requireTrustedRequest(req, res, next) {
+    if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+    if ((req.get("sec-fetch-site") || "").toLowerCase() === "cross-site") {
+        return res.status(403).json({ error: "Solicitud externa rechazada." });
+    }
+
+    const origin = req.get("origin");
+    if (!origin) return next();
+
+    try {
+        const supplied = new URL(origin);
+        const expected = new URL(`${req.protocol}://${req.get("host")}`);
+        if (supplied.origin !== expected.origin) {
+            return res.status(403).json({ error: "Origen no permitido." });
+        }
+    } catch {
+        return res.status(403).json({ error: "Origen no válido." });
+    }
+    next();
+}
+
+function disablePrivateCaching(res) {
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+}
+
 app.disable("x-powered-by");
 app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("X-XSS-Protection", "0");
+    res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+    res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+    if (process.env.NODE_ENV === "production") {
+        res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
     res.setHeader(
         "Content-Security-Policy",
-        "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co; frame-src https://accounts.google.com https://*.supabase.co; base-uri 'self'; form-action 'self'"
+        "default-src 'self'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data: blob: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co; frame-src https://accounts.google.com https://*.supabase.co; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
     );
     next();
 });
+app.use("/api", requireTrustedRequest);
 app.use(express.json({ limit: "100kb" }));
 
 function normalizeText(value, maxLength = 500) {
@@ -235,7 +287,8 @@ function consolidateItems(items) {
 }
 
 async function authenticate(req, res, next) {
-    const ownerSession = verifyOwnerSession(readCookie(req, "rsf_owner_session"));
+    disablePrivateCaching(res);
+    const ownerSession = verifyOwnerSession(readCookie(req, OWNER_COOKIE_NAME));
     if (ownerSession) {
         req.user = {
             id: "local-owner",
@@ -265,12 +318,7 @@ async function authenticate(req, res, next) {
     const user = data.user;
     const email = (user.email || "").toLowerCase();
     const metadata = user.user_metadata || {};
-    const { data: existingProfile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-    const role = existingProfile?.role === "owner" ? "owner" : "customer";
+    const role = "customer";
 
     await supabase.from("profiles").upsert({
         id: user.id,
@@ -339,12 +387,13 @@ app.get("/api/services", async (req, res) => {
 });
 
 app.post("/api/auth/local/login", ownerLoginRateLimit, (req, res) => {
+    disablePrivateCaching(res);
     if (!localOwnerConfigured) {
         return res.status(503).json({ error: "El acceso del propietario todavía no está configurado." });
     }
 
-    const username = normalizeCredential(req.body.username);
-    const password = typeof req.body.password === "string" ? req.body.password : "";
+    const username = normalizeCredential(req.body?.username);
+    const password = typeof req.body?.password === "string" ? req.body.password : "";
     if (!safeEqual(username, OWNER_USERNAME) || !safeEqual(password, OWNER_PASSWORD)) {
         return res.status(401).json({ error: "Usuario o contraseña incorrectos." });
     }
@@ -355,11 +404,13 @@ app.post("/api/auth/local/login", ownerLoginRateLimit, (req, res) => {
 });
 
 app.post("/api/auth/local/logout", (req, res) => {
+    disablePrivateCaching(res);
     res.setHeader("Set-Cookie", ownerCookie("", 0));
     res.json({ ok: true });
 });
 
 app.get("/api/me", authenticate, (req, res) => {
+    disablePrivateCaching(res);
     const metadata = req.user.user_metadata || {};
     res.json({
         id: req.user.id,

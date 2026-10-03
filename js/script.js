@@ -102,7 +102,7 @@ async function loadConfiguration() {
 
         if (state.authConfigured && window.supabase?.createClient) {
             state.supabase = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
-                auth: { persistSession: true, detectSessionInUrl: true }
+                auth: { persistSession: true, detectSessionInUrl: true, autoRefreshToken: true, flowType: "pkce" }
             });
 
             const { data } = await state.supabase.auth.getSession();
@@ -223,7 +223,7 @@ async function loginWithGoogle() {
     const redirectTo = `${window.location.origin}${window.location.pathname}`;
     const { error } = await state.supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo }
+        options: { redirectTo, scopes: "openid email profile" }
     });
 
     if (error) showToast(error.message, "error");
