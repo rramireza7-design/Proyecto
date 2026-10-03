@@ -11,6 +11,7 @@ Aplicación web para mostrar servicios de reparación, registrar clientes, inici
 - Factura/recibo imprimible y confirmación de cita presencial.
 - Stock compartido y persistente en Supabase; se descuenta en una transacción al confirmar la cita.
 - Cuenta local de propietario protegida por cookie segura para crear, editar y ocultar servicios, cambiar stock y administrar citas.
+- Carga de fotos JPG, PNG o WebP desde el panel del propietario, con vista previa y almacenamiento persistente en Supabase Storage.
 - Clientes limitados a su carrito, compras y citas.
 
 ## Configurar Supabase (plan gratuito)

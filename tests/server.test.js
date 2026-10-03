@@ -5,7 +5,7 @@ process.env.OWNER_USERNAME = "admin";
 process.env.OWNER_PASSWORD = "contrasena-local-segura";
 process.env.SESSION_SECRET = "secreto-de-pruebas-con-mas-de-32-caracteres";
 
-const { app, consolidateItems, createSlug, validateServiceInput } = require("../server");
+const { app, consolidateItems, createSlug, isSupportedImage, validateServiceInput } = require("../server");
 
 let server;
 let baseUrl;
@@ -46,6 +46,14 @@ test("validateServiceInput normaliza datos del catálogo", () => {
     assert.equal(service.price, 125.5);
     assert.equal(service.stock, 4);
     assert.equal(service.image_path, "/img/servicio-software.png");
+});
+
+test("isSupportedImage valida la firma real de las imágenes", () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+    const fakePng = Buffer.from("esto no es una imagen");
+    assert.equal(isSupportedImage(png, "image/png"), true);
+    assert.equal(isSupportedImage(fakePng, "image/png"), false);
+    assert.equal(isSupportedImage(png, "application/octet-stream"), false);
 });
 
 test("GET /api/health informa el estado del servidor", async () => {
@@ -100,6 +108,7 @@ test("los recursos principales y sus imágenes responden", async () => {
         const response = await fetch(`${baseUrl}${resource}`);
         assert.equal(response.status, 200, resource);
         assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+        if (resource === "/") assert.match(response.headers.get("content-security-policy") || "", /img-src[^;]*blob:/);
     }
 });
 
@@ -128,4 +137,11 @@ test("las rutas privadas rechazan solicitudes sin sesión", async () => {
         body: JSON.stringify({ items: [] })
     });
     assert.equal(response.status, 401);
+
+    const uploadResponse = await fetch(`${baseUrl}/api/admin/service-images`, {
+        method: "POST",
+        headers: { "Content-Type": "image/png" },
+        body: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])
+    });
+    assert.equal(uploadResponse.status, 401);
 });

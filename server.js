@@ -16,6 +16,13 @@ const databaseConfigured = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const authConfigured = Boolean(databaseConfigured && SUPABASE_ANON_KEY);
 const localOwnerConfigured = Boolean(OWNER_USERNAME && OWNER_PASSWORD.length >= 12 && SESSION_SECRET.length >= 32);
 const ownerLoginAttempts = new Map();
+const SERVICE_IMAGES_BUCKET = "service-images";
+const MAX_SERVICE_IMAGE_BYTES = 5 * 1024 * 1024;
+const SERVICE_IMAGE_TYPES = new Map([
+    ["image/jpeg", "jpg"],
+    ["image/png", "png"],
+    ["image/webp", "webp"]
+]);
 
 let adminClient;
 
@@ -105,7 +112,7 @@ app.use((req, res, next) => {
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
     res.setHeader(
         "Content-Security-Policy",
-        "default-src 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co; frame-src https://accounts.google.com https://*.supabase.co; base-uri 'self'; form-action 'self'"
+        "default-src 'self'; img-src 'self' data: blob: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co; frame-src https://accounts.google.com https://*.supabase.co; base-uri 'self'; form-action 'self'"
     );
     next();
 });
@@ -135,6 +142,37 @@ function normalizeImagePath(value) {
     }
 
     return imagePath.startsWith("/") || remoteImage ? imagePath : `/${imagePath}`;
+}
+
+function isSupportedImage(buffer, contentType) {
+    if (!Buffer.isBuffer(buffer) || buffer.length < 12 || !SERVICE_IMAGE_TYPES.has(contentType)) return false;
+    if (contentType === "image/jpeg") return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+    if (contentType === "image/png") return buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    return buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP";
+}
+
+async function ensureServiceImagesBucket() {
+    const storage = getAdminClient().storage;
+    const { data: bucket } = await storage.getBucket(SERVICE_IMAGES_BUCKET);
+
+    if (!bucket) {
+        const { error } = await storage.createBucket(SERVICE_IMAGES_BUCKET, {
+            public: true,
+            fileSizeLimit: MAX_SERVICE_IMAGE_BYTES,
+            allowedMimeTypes: [...SERVICE_IMAGE_TYPES.keys()]
+        });
+        if (error && !/already exists/i.test(error.message || "")) throw error;
+        return;
+    }
+
+    if (!bucket.public) {
+        const { error } = await storage.updateBucket(SERVICE_IMAGES_BUCKET, {
+            public: true,
+            fileSizeLimit: MAX_SERVICE_IMAGE_BYTES,
+            allowedMimeTypes: [...SERVICE_IMAGE_TYPES.keys()]
+        });
+        if (error) throw error;
+    }
 }
 
 function validateServiceInput(body = {}) {
@@ -333,6 +371,36 @@ app.get("/api/me", authenticate, (req, res) => {
     });
 });
 
+app.post(
+    "/api/admin/service-images",
+    authenticate,
+    requireOwner,
+    requireDatabase,
+    express.raw({ type: [...SERVICE_IMAGE_TYPES.keys()], limit: MAX_SERVICE_IMAGE_BYTES }),
+    async (req, res) => {
+        try {
+            const contentType = (req.get("content-type") || "").split(";")[0].trim().toLowerCase();
+            if (!isSupportedImage(req.body, contentType)) {
+                return res.status(415).json({ error: "Selecciona una imagen JPG, PNG o WebP válida." });
+            }
+
+            await ensureServiceImagesBucket();
+            const extension = SERVICE_IMAGE_TYPES.get(contentType);
+            const objectPath = `services/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+            const { error } = await getAdminClient().storage
+                .from(SERVICE_IMAGES_BUCKET)
+                .upload(objectPath, req.body, { contentType, cacheControl: "31536000", upsert: false });
+            if (error) throw error;
+
+            const { data } = getAdminClient().storage.from(SERVICE_IMAGES_BUCKET).getPublicUrl(objectPath);
+            res.status(201).json({ imagePath: data.publicUrl });
+        } catch (error) {
+            console.error("No se pudo subir la imagen:", error.message);
+            res.status(400).json({ error: "No se pudo guardar la imagen. Intenta nuevamente." });
+        }
+    }
+);
+
 app.post("/api/services", authenticate, requireOwner, requireDatabase, async (req, res) => {
     try {
         const service = validateServiceInput(req.body);
@@ -483,6 +551,9 @@ app.get("/", (req, res) => {
 
 app.use((error, req, res, next) => {
     console.error(error);
+    if (error?.type === "entity.too.large") {
+        return res.status(413).json({ error: "La imagen no puede superar 5 MB." });
+    }
     res.status(500).json({ error: "Ocurrió un error inesperado." });
 });
 
@@ -493,4 +564,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { app, consolidateItems, createSlug, validateServiceInput };
+module.exports = { app, consolidateItems, createSlug, isSupportedImage, validateServiceInput };

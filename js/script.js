@@ -3,6 +3,8 @@
 const CART_KEY = "rsfPhoneCartV2";
 const CURRENCY = new Intl.NumberFormat("es-GT", { style: "currency", currency: "GTQ" });
 const DATE_TIME = new Intl.DateTimeFormat("es-GT", { dateStyle: "long", timeStyle: "short" });
+const MAX_SERVICE_IMAGE_BYTES = 5 * 1024 * 1024;
+const SERVICE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const STATUS_LABELS = {
     scheduled: "Agendada",
     confirmed: "Confirmada",
@@ -21,7 +23,8 @@ const state = {
     authConfigured: false,
     localOwnerConfigured: false,
     persistent: false,
-    toastTimer: null
+    toastTimer: null,
+    serviceImagePreviewUrl: ""
 };
 
 const byId = (id) => document.getElementById(id);
@@ -800,6 +803,9 @@ function renderAdminServices() {
     state.services.forEach((service) => {
         const row = makeElement("article", "admin-row");
         const header = makeElement("div", "admin-row-header");
+        const image = makeElement("img", "admin-row-image");
+        image.src = service.image_path;
+        image.alt = "";
         const content = makeElement("div");
         content.append(makeElement("h3", "", service.name), makeElement("p", "", `${service.category} · ${money(service.price)} · Stock: ${service.stock}`));
         const actions = makeElement("div", "admin-row-actions");
@@ -810,7 +816,7 @@ function renderAdminServices() {
         hide.type = "button";
         hide.dataset.hideService = service.id;
         actions.append(edit, hide);
-        header.append(content, actions);
+        header.append(image, content, actions);
         row.append(header);
         container.append(row);
     });
@@ -826,14 +832,59 @@ function editService(serviceId) {
     byId("servicePrice").value = service.price;
     byId("serviceStock").value = service.stock;
     byId("serviceImage").value = service.image_path;
+    byId("serviceImageFile").value = "";
+    setServiceImagePreview(service.image_path, "Foto actual. Selecciona otra para reemplazarla.");
     byId("serviceFormTitle").textContent = "Editar servicio";
     byId("cancelServiceEdit").classList.remove("hidden");
     byId("serviceForm").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
+function releaseServiceImagePreview() {
+    if (state.serviceImagePreviewUrl) URL.revokeObjectURL(state.serviceImagePreviewUrl);
+    state.serviceImagePreviewUrl = "";
+}
+
+function setServiceImagePreview(source, status) {
+    const preview = byId("serviceImagePreview");
+    if (source) {
+        preview.src = source;
+        preview.classList.remove("hidden");
+    } else {
+        preview.removeAttribute("src");
+        preview.classList.add("hidden");
+    }
+    byId("serviceImageStatus").textContent = status;
+}
+
+function previewSelectedServiceImage(event) {
+    const file = event.target.files[0];
+    releaseServiceImagePreview();
+
+    if (!file) {
+        const currentImage = byId("serviceImage").value;
+        setServiceImagePreview(currentImage, currentImage
+            ? "Se conservará la foto actual."
+            : "Selecciona una imagen JPG, PNG o WebP de hasta 5 MB.");
+        return;
+    }
+
+    if (!SERVICE_IMAGE_TYPES.has(file.type) || file.size > MAX_SERVICE_IMAGE_BYTES || file.size === 0) {
+        event.target.value = "";
+        setServiceImagePreview(byId("serviceImage").value, "La foto debe ser JPG, PNG o WebP y no superar 5 MB.");
+        showToast("Selecciona una foto válida de hasta 5 MB.", "error");
+        return;
+    }
+
+    state.serviceImagePreviewUrl = URL.createObjectURL(file);
+    setServiceImagePreview(state.serviceImagePreviewUrl, `${file.name} · ${(file.size / (1024 * 1024)).toFixed(1)} MB`);
+}
+
 function resetServiceForm() {
+    releaseServiceImagePreview();
     byId("serviceForm").reset();
     byId("serviceId").value = "";
+    byId("serviceImage").value = "";
+    setServiceImagePreview("", "Selecciona una imagen JPG, PNG o WebP de hasta 5 MB.");
     byId("serviceFormTitle").textContent = "Agregar servicio";
     byId("cancelServiceEdit").classList.add("hidden");
 }
@@ -841,16 +892,32 @@ function resetServiceForm() {
 async function submitService(event) {
     event.preventDefault();
     const id = byId("serviceId").value;
-    const body = {
-        name: byId("serviceName").value,
-        category: byId("serviceCategory").value,
-        description: byId("serviceDescription").value,
-        price: Number(byId("servicePrice").value),
-        stock: Number(byId("serviceStock").value),
-        imagePath: byId("serviceImage").value
-    };
+    const submit = event.submitter;
+    const selectedImage = byId("serviceImageFile").files[0];
+    let imagePath = byId("serviceImage").value;
 
     try {
+        submit.disabled = true;
+        if (selectedImage) {
+            submit.textContent = "Subiendo foto…";
+            const upload = await api("/api/admin/service-images", {
+                method: "POST",
+                headers: { "Content-Type": selectedImage.type },
+                body: selectedImage
+            });
+            imagePath = upload.imagePath;
+        }
+        if (!imagePath) throw new Error("Selecciona una foto para el servicio.");
+
+        submit.textContent = "Guardando…";
+        const body = {
+            name: byId("serviceName").value,
+            category: byId("serviceCategory").value,
+            description: byId("serviceDescription").value,
+            price: Number(byId("servicePrice").value),
+            stock: Number(byId("serviceStock").value),
+            imagePath
+        };
         await api(id ? `/api/services/${id}` : "/api/services", {
             method: id ? "PATCH" : "POST",
             body: JSON.stringify(body)
@@ -860,6 +927,9 @@ async function submitService(event) {
         showToast(id ? "Servicio actualizado." : "Servicio creado.");
     } catch (error) {
         showToast(error.message, "error");
+    } finally {
+        submit.disabled = false;
+        submit.textContent = "Guardar servicio";
     }
 }
 
@@ -964,6 +1034,7 @@ function bindEvents() {
     byId("checkoutForm").addEventListener("submit", submitCheckout);
     byId("refreshOrdersButton").addEventListener("click", loadOrders);
     byId("serviceForm").addEventListener("submit", submitService);
+    byId("serviceImageFile").addEventListener("change", previewSelectedServiceImage);
     byId("cancelServiceEdit").addEventListener("click", resetServiceForm);
     byId("printReceiptButton").addEventListener("click", () => window.print());
     byId("fillTestCardButton").addEventListener("click", () => {

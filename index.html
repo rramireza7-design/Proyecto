@@ -6,7 +6,7 @@
     <meta name="description" content="Servicio técnico de teléfonos con catálogo, citas presenciales y diagnóstico profesional.">
     <meta name="theme-color" content="#101828">
     <title>RSF-PHONE | Servicio técnico</title>
-    <link rel="stylesheet" href="/css/estilos.css?v=20261003-1">
+    <link rel="stylesheet" href="/css/estilos.css?v=20261003-2">
 </head>
 <body>
     <a class="skip-link" href="#contenido">Ir al contenido</a>
@@ -235,7 +235,17 @@
                         <div class="span-2"><label for="serviceDescription">Descripción</label><textarea id="serviceDescription" required minlength="10" maxlength="800" rows="3"></textarea></div>
                         <div><label for="servicePrice">Precio (Q)</label><input id="servicePrice" required type="number" min="0.01" step="0.01"></div>
                         <div><label for="serviceStock">Stock</label><input id="serviceStock" required type="number" min="0" step="1"></div>
-                        <div class="span-2"><label for="serviceImage">Imagen</label><select id="serviceImage" required><option value="/img/servicio-pantalla.png">Pantalla</option><option value="/img/servicio-bateria.png">Batería</option><option value="/img/servicio-carga.png">Puerto de carga</option><option value="/img/servicio-camara.png">Cámara</option><option value="/img/servicio-audio.png">Audio</option><option value="/img/servicio-software.png">Software</option></select></div>
+                        <div class="span-2">
+                            <label for="serviceImageFile">Foto del servicio</label>
+                            <div class="image-upload-control">
+                                <img class="service-image-preview hidden" id="serviceImagePreview" alt="Vista previa de la foto del servicio">
+                                <div class="image-upload-copy">
+                                    <input id="serviceImageFile" type="file" accept="image/jpeg,image/png,image/webp">
+                                    <small id="serviceImageStatus">Selecciona una imagen JPG, PNG o WebP de hasta 5 MB.</small>
+                                </div>
+                            </div>
+                            <input id="serviceImage" type="hidden">
+                        </div>
                     </div>
                     <button class="primary-button" type="submit">Guardar servicio</button>
                 </form>
@@ -312,6 +322,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <script src="/vendor/supabase.js"></script>
-    <script src="/js/script.js?v=20261003-1"></script>
+    <script src="/js/script.js?v=20261003-2"></script>
 </body>
 </html>
