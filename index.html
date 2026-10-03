@@ -6,7 +6,7 @@
     <meta name="description" content="Servicio técnico de teléfonos con catálogo, citas presenciales y diagnóstico profesional.">
     <meta name="theme-color" content="#101828">
     <title>RSF-PHONE | Servicio técnico</title>
-    <link rel="stylesheet" href="/css/estilos.css">
+    <link rel="stylesheet" href="/css/estilos.css?v=20261003-1">
 </head>
 <body>
     <a class="skip-link" href="#contenido">Ir al contenido</a>
@@ -159,7 +159,7 @@
                 <div><h3>Estás en la cuenta del propietario</h3><p>Para reservar como cliente, cierra esta sesión y entra con correo o Google.</p></div>
             </div>
 
-            <form class="checkout-panel hidden" id="checkoutForm">
+            <form class="checkout-panel hidden" id="checkoutForm" method="post" action="/">
                 <div class="checkout-heading">
                     <div><span class="eyebrow">Paso 2 de 2</span><h3>Agenda y pago de prueba</h3></div>
                     <span class="simulation-badge">Simulación · no cobra dinero</span>
@@ -226,7 +226,7 @@
             </div>
 
             <div id="adminProductsPanel">
-                <form class="admin-form" id="serviceForm">
+                <form class="admin-form" id="serviceForm" method="post" action="/">
                     <input id="serviceId" type="hidden">
                     <div class="form-heading"><h3 id="serviceFormTitle">Agregar servicio</h3><button class="text-button hidden" id="cancelServiceEdit" type="button">Cancelar edición</button></div>
                     <div class="admin-form-grid">
@@ -268,7 +268,7 @@
 
         <div class="auth-message hidden" id="authMessage" role="alert"></div>
 
-        <form class="auth-form" id="loginForm">
+        <form class="auth-form" id="loginForm" method="post" action="/">
             <label for="loginIdentifier">Correo o usuario</label>
             <input id="loginIdentifier" name="identifier" required autocomplete="username" placeholder="correo@ejemplo.com o admin">
 
@@ -279,7 +279,7 @@
             <small>El propietario ingresa aquí con su usuario local. Los clientes usan su correo.</small>
         </form>
 
-        <form class="auth-form hidden" id="registerForm">
+        <form class="auth-form hidden" id="registerForm" method="post" action="/">
             <label for="registerName">Nombre completo</label>
             <input id="registerName" name="name" required autocomplete="name" maxlength="120" placeholder="Tu nombre">
 
@@ -312,6 +312,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <script src="/vendor/supabase.js"></script>
-    <script src="/js/script.js"></script>
+    <script src="/js/script.js?v=20261003-1"></script>
 </body>
 </html>

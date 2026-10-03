@@ -458,17 +458,24 @@ app.get("/vendor/supabase.js", (req, res) => {
     res.sendFile(path.join(__dirname, "node_modules", "@supabase", "supabase-js", "dist", "umd", "supabase.js"));
 });
 
-const staticOptions = {
+const assetOptions = {
     etag: true,
-    maxAge: process.env.NODE_ENV === "production" ? "1h" : 0
+    maxAge: 0,
+    setHeaders(res) {
+        res.setHeader("Cache-Control", "no-cache, must-revalidate");
+    }
 };
 
-app.use("/css", express.static(path.join(__dirname, "css"), staticOptions));
-app.use("/js", express.static(path.join(__dirname, "js"), staticOptions));
+app.use("/css", express.static(path.join(__dirname, "css"), assetOptions));
+app.use("/js", express.static(path.join(__dirname, "js"), assetOptions));
 app.use("/img", express.static(path.join(__dirname, "img"), {
-    ...staticOptions,
+    etag: true,
     maxAge: process.env.NODE_ENV === "production" ? "7d" : 0
 }));
+
+app.post("/", (req, res) => {
+    res.redirect(303, "/?actualiza=1");
+});
 
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "index.html"));

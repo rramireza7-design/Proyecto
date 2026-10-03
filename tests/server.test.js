@@ -103,6 +103,17 @@ test("los recursos principales y sus imágenes responden", async () => {
     }
 });
 
+test("los scripts se revalidan y los formularios sensibles nunca usan GET", async () => {
+    const scriptResponse = await fetch(`${baseUrl}/js/script.js?v=test`);
+    assert.equal(scriptResponse.status, 200);
+    assert.match(scriptResponse.headers.get("cache-control") || "", /no-cache/);
+
+    const pageResponse = await fetch(`${baseUrl}/`);
+    const html = await pageResponse.text();
+    assert.match(html, /\/js\/script\.js\?v=/);
+    assert.doesNotMatch(html, /<form[^>]+id="(?:loginForm|registerForm|checkoutForm)"(?![^>]+method="post")/);
+});
+
 test("los archivos internos no se sirven públicamente", async () => {
     for (const resource of ["/server.js", "/package.json", "/.env.example", "/supabase/schema.sql"]) {
         const response = await fetch(`${baseUrl}${resource}`);
