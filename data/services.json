@@ -1,0 +1,74 @@
+[
+  {
+    "id": "10000000-0000-4000-8000-000000000001",
+    "slug": "cambio-de-pantalla",
+    "name": "Cambio de pantalla",
+    "category": "Pantallas",
+    "description": "Reemplazo de pantalla quebrada, manchada o con fallas táctiles. Incluye diagnóstico previo del display, touch y conexión interna.",
+    "price": 350,
+    "stock": 3,
+    "image_path": "/img/servicio-pantalla.png",
+    "active": true,
+    "sort_order": 1
+  },
+  {
+    "id": "10000000-0000-4000-8000-000000000002",
+    "slug": "cambio-de-bateria",
+    "name": "Cambio de batería",
+    "category": "Baterías",
+    "description": "Sustitución segura de batería para recuperar duración, rendimiento y estabilidad de carga del dispositivo.",
+    "price": 488,
+    "stock": 4,
+    "image_path": "/img/servicio-bateria.png",
+    "active": true,
+    "sort_order": 2
+  },
+  {
+    "id": "10000000-0000-4000-8000-000000000003",
+    "slug": "puerto-de-carga",
+    "name": "Puerto de carga",
+    "category": "Puerto de carga",
+    "description": "Limpieza, reparación o reemplazo del conector cuando el teléfono no carga, se desconecta o no reconoce el cable.",
+    "price": 150,
+    "stock": 2,
+    "image_path": "/img/servicio-carga.png",
+    "active": true,
+    "sort_order": 3
+  },
+  {
+    "id": "10000000-0000-4000-8000-000000000004",
+    "slug": "reparacion-de-camara",
+    "name": "Reparación de cámara",
+    "category": "Cámaras",
+    "description": "Diagnóstico y solución para fallas de enfoque, imagen borrosa, cámara negra o daños en el módulo frontal o trasero.",
+    "price": 420,
+    "stock": 2,
+    "image_path": "/img/servicio-camara.png",
+    "active": true,
+    "sort_order": 4
+  },
+  {
+    "id": "10000000-0000-4000-8000-000000000005",
+    "slug": "reparacion-de-audio",
+    "name": "Reparación de audio",
+    "category": "Audio",
+    "description": "Revisión y reparación de bocinas, micrófono y auricular para llamadas y reproducción de sonido claras.",
+    "price": 260,
+    "stock": 5,
+    "image_path": "/img/servicio-audio.png",
+    "active": true,
+    "sort_order": 5
+  },
+  {
+    "id": "10000000-0000-4000-8000-000000000006",
+    "slug": "software-y-desbloqueo",
+    "name": "Software y desbloqueo",
+    "category": "Software",
+    "description": "Actualización, restauración y optimización para corregir lentitud, errores del sistema y aplicaciones inestables.",
+    "price": 180,
+    "stock": 6,
+    "image_path": "/img/servicio-software.png",
+    "active": true,
+    "sort_order": 6
+  }
+]

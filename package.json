@@ -1,19 +1,22 @@
 {
-  "name": "proyecto-de-graduacion",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "rsf-phone",
+  "version": "2.0.0",
+  "description": "Catálogo, citas y facturación simulada para RSF-PHONE",
+  "main": "server.js",
   "scripts": {
-  "start": "node server.js",
-  "test": "echo \"Error: no test specified\" && exit 1"
-},
-  "keywords": [],
-  "author": "",
+    "start": "node server.js",
+    "test": "node --test",
+    "check": "node --check server.js && node --check js/script.js"
+  },
+  "keywords": ["render", "supabase", "servicio-tecnico"],
+  "author": "RSF-PHONE",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "cors": "^2.8.6",
-    "express": "^5.2.1",
-    "oracledb": "^6.10.0"
+    "@supabase/supabase-js": "^2.57.4",
+    "express": "^5.2.1"
   }
 }

@@ -1,229 +1,281 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RSF-PHONE | Servicio Técnico</title>
-    <link rel="stylesheet" href="css/estilos.css">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Servicio técnico de teléfonos con catálogo, citas presenciales y diagnóstico profesional.">
+    <meta name="theme-color" content="#101828">
+    <title>RSF-PHONE | Servicio técnico</title>
+    <link rel="stylesheet" href="/css/estilos.css">
 </head>
 <body>
+    <a class="skip-link" href="#contenido">Ir al contenido</a>
 
-<header class="top-header">
-    <div class="brand">📱 RSF-PHONE</div>
+    <header class="site-header">
+        <div class="header-shell">
+            <button class="brand" type="button" data-section-target="inicio" aria-label="Ir al inicio">
+                <span class="brand-mark" aria-hidden="true">R</span>
+                <span><strong>RSF</strong>-PHONE</span>
+            </button>
 
-    <div class="search-box">
-        <span>🔍</span>
-        <input id="buscar" onkeyup="mostrarProductos()" placeholder="Búsqueda">
-    </div>
+            <label class="search-box" for="buscar">
+                <span aria-hidden="true">⌕</span>
+                <input id="buscar" type="search" autocomplete="off" placeholder="Buscar reparación o servicio">
+            </label>
 
-    <div class="icons">
-        <span>👤</span>
+            <div class="header-actions">
+                <div class="account-wrap">
+                    <button class="header-button" id="loginButton" type="button">
+                        <span aria-hidden="true">👤</span>
+                        <span>Iniciar sesión</span>
+                    </button>
 
-        <span class="carrito-icono" onclick="mostrarSeccion('carrito')">
-            🛒 <small id="contadorCarrito">0</small>
-        </span>
-    </div>
-</header>
+                    <button class="profile-button hidden" id="profileButton" type="button" aria-expanded="false" aria-controls="accountMenu">
+                        <img id="profileAvatar" alt="" referrerpolicy="no-referrer">
+                        <span id="profileName">Mi cuenta</span>
+                        <span aria-hidden="true">⌄</span>
+                    </button>
 
-<nav class="menu">
-    <button onclick="mostrarSeccion('todo')">Inicio</button>
-    <button onclick="mostrarSeccion('catalogo')">Catálogo</button>
-    <button onclick="mostrarSeccion('servicios')">Servicios</button>
-    <button onclick="mostrarSeccion('formulario')">Agregar servicio</button>
-    <button onclick="mostrarSeccion('contacto')">Contacto</button>
-</nav>
-
-<section class="hero page-section" id="inicio">
-    <div class="hero-text">
-        <h1>RSF-PHONE</h1>
-        <h2>Servicio técnico premium</h2>
-        <p>Reparación Android, iPhone, pantallas, baterías y diagnóstico profesional.</p>
-
-        <button onclick="mostrarSeccion('catalogo')">
-            Ver catálogo
-        </button>
-    </div>
-
-    <div class="hero-img">
-        📱
-    </div>
-</section>
-
-<section class="catalogo page-section" id="catalogo">
-    <div class="section-title">
-        <h2>Catálogo RSF-PHONE</h2>
-
-        <select id="filtroCategoria" onchange="mostrarProductos()">
-            <option value="">Todas las categorías</option>
-            <option>Pantallas</option>
-            <option>Baterías</option>
-            <option>Puerto de carga</option>
-            <option>Cámaras</option>
-            <option>Audio</option>
-            <option>Software</option>
-            <option>Diagnóstico</option>
-            <option>Mantenimiento</option>
-        </select>
-    </div>
-
-    <div class="grid" id="listaProductos"></div>
-</section>
-
-<section class="categories page-section" id="servicios">
-    <h2>Servicios principales</h2>
-
-    <div class="category-grid">
-        <div onclick="filtrarCategoria('Pantallas')">📲<span>Pantallas</span></div>
-        <div onclick="filtrarCategoria('Baterías')">🔋<span>Baterías</span></div>
-        <div onclick="filtrarCategoria('Puerto de carga')">🔌<span>Carga</span></div>
-        <div onclick="filtrarCategoria('Cámaras')">📷<span>Cámaras</span></div>
-        <div onclick="filtrarCategoria('Audio')">🔊<span>Audio</span></div>
-        <div onclick="filtrarCategoria('Software')">🔐<span>Software</span></div>
-    </div>
-</section>
-
-<section class="form-section page-section" id="formulario">
-    <h2>Agregar / editar servicio</h2>
-
-    <input type="hidden" id="editIndex">
-
-    <label>Nombre del servicio</label>
-    <input id="nombre" placeholder="Ej. Cambio de pantalla iPhone">
-
-    <label>Categoría</label>
-    <select id="categoria">
-        <option>Pantallas</option>
-        <option>Baterías</option>
-        <option>Puerto de carga</option>
-        <option>Cámaras</option>
-        <option>Audio</option>
-        <option>Software</option>
-        <option>Diagnóstico</option>
-        <option>Mantenimiento</option>
-    </select>
-
-    <label>Descripción</label>
-    <textarea id="descripcion" rows="4" placeholder="Describe el servicio"></textarea>
-
-    <label>Precio estimado</label>
-    <input id="precio" type="number" placeholder="Ej. 350">
-
-    <label>Imagen</label>
-    <select id="imagen">
-        <option value="img/pantalla.jpg">Pantalla</option>
-        <option value="img/bateria.jpg">Batería</option>
-        <option value="img/carga.jpg">Puerto de carga</option>
-        <option value="img/camara.jpg">Cámara</option>
-        <option value="img/audio.jpg">Audio</option>
-        <option value="img/software.jpg">Software</option>
-    </select>
-
-    <div class="buttons">
-        <button class="btn-save" onclick="guardarProducto()">Guardar</button>
-        <button class="btn-clear" onclick="limpiarFormulario()">Limpiar</button>
-    </div>
-</section>
-
-<section class="carrito-section page-section oculto" id="carrito">
-    <h2>Carrito de cotización</h2>
-    <p class="carrito-texto">Servicios seleccionados para cotizar.</p>
-
-    <div id="listaCarrito"></div>
-
-    <div class="total-box">
-        <h3>Total estimado:</h3>
-        <span id="totalCarrito">Q0</span>
-    </div>
-
-    <div class="payment-box">
-        <div class="payment-title">
-            <h3>Datos de pago</h3>
-            <p>Completa la información de la tarjeta para finalizar la compra.</p>
-        </div>
-
-        <div class="card-preview">
-            <div class="card-top">
-                <span>RSF-PHONE</span>
-                <span>💳</span>
-            </div>
-
-            <div class="card-number" id="vistaNumeroTarjeta">
-                **** **** **** ****
-            </div>
-
-            <div class="card-bottom">
-                <div>
-                    <small>Titular</small>
-                    <strong id="vistaTitular">NOMBRE APELLIDO</strong>
+                    <div class="account-menu hidden" id="accountMenu">
+                        <p id="accountEmail"></p>
+                        <span class="role-badge" id="accountRole">Cliente</span>
+                        <button type="button" data-section-target="pedidos">Mis citas y facturas</button>
+                        <button class="owner-only hidden" type="button" data-section-target="admin">Panel del propietario</button>
+                        <button type="button" id="logoutButton">Cerrar sesión</button>
+                    </div>
                 </div>
 
-                <div>
-                    <small>Vence</small>
-                    <strong id="vistaFecha">MM/AA</strong>
-                </div>
+                <button class="cart-button" type="button" data-section-target="carrito" aria-label="Abrir carrito">
+                    <span aria-hidden="true">🛒</span>
+                    <span>Carrito</span>
+                    <strong id="contadorCarrito">0</strong>
+                </button>
             </div>
         </div>
 
-        <div class="payment-form">
-            <label>Nombre del titular</label>
-            <input 
-                id="titularTarjeta" 
-                type="text" 
-                placeholder="Ej. Victor García"
-                oninput="actualizarVistaTarjeta()"
-            >
+        <nav class="main-nav" aria-label="Navegación principal">
+            <button class="active" type="button" data-section-target="inicio">Inicio</button>
+            <button type="button" data-section-target="catalogo">Catálogo</button>
+            <button type="button" data-section-target="servicios">Servicios</button>
+            <button type="button" data-section-target="pedidos">Mis citas</button>
+            <button class="owner-only hidden" type="button" data-section-target="admin">Administrar</button>
+            <button type="button" data-section-target="contacto">Contacto</button>
+        </nav>
+    </header>
 
-            <label>Número de tarjeta</label>
-            <input 
-                id="numeroTarjeta" 
-                type="text" 
-                maxlength="19"
-                placeholder="0000 0000 0000 0000"
-                oninput="formatearNumeroTarjeta(); actualizarVistaTarjeta();"
-            >
+    <div class="configuration-banner hidden" id="configurationBanner" role="status">
+        <strong>Catálogo en modo demostración.</strong>
+        El propietario debe conectar Supabase para habilitar Google, stock compartido y citas.
+    </div>
 
-            <div class="payment-row">
-                <div>
-                    <label>Fecha de vencimiento</label>
-                    <input 
-                        id="fechaTarjeta" 
-                        type="text" 
-                        maxlength="5"
-                        placeholder="MM/AA"
-                        oninput="formatearFechaTarjeta(); actualizarVistaTarjeta();"
-                    >
+    <main id="contenido">
+        <section class="hero page-section" id="inicio">
+            <div class="hero-copy">
+                <span class="eyebrow">Diagnóstico profesional · Android y iOS</span>
+                <h1>Tu teléfono, de vuelta a su mejor versión.</h1>
+                <p>Elige el servicio, reserva una cita presencial y recibe una factura de prueba al instante. Sin cobros reales ni sorpresas.</p>
+                <div class="hero-actions">
+                    <button class="primary-button" type="button" data-section-target="catalogo">Explorar servicios</button>
+                    <button class="secondary-button" type="button" data-category="Diagnóstico">Solicitar diagnóstico</button>
                 </div>
-
-                <div>
-                    <label>CVV</label>
-                    <input 
-                        id="cvvTarjeta" 
-                        type="password" 
-                        maxlength="3"
-                        placeholder="123"
-                    >
+                <div class="hero-proof">
+                    <span><strong>6+</strong> servicios especializados</span>
+                    <span><strong>100%</strong> proceso transparente</span>
                 </div>
             </div>
+            <div class="hero-visual" aria-label="Reparación profesional de pantalla">
+                <img src="/img/servicio-pantalla.png" alt="Dos teléfonos, uno con pantalla dañada y otro reparado">
+                <div class="floating-card">
+                    <span aria-hidden="true">✓</span>
+                    <div><strong>Cita confirmada</strong><small>Atención presencial</small></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="benefits" aria-label="Beneficios">
+            <article><span aria-hidden="true">🧪</span><div><strong>Diagnóstico previo</strong><p>Revisamos la causa antes de reparar.</p></div></article>
+            <article><span aria-hidden="true">🛡️</span><div><strong>Proceso seguro</strong><p>No almacenamos datos de tarjeta.</p></div></article>
+            <article><span aria-hidden="true">📅</span><div><strong>Cita organizada</strong><p>Recibe comprobante y horario.</p></div></article>
+        </section>
+
+        <section class="categories page-section" id="servicios">
+            <div class="section-heading">
+                <div><span class="eyebrow">Encuentra tu solución</span><h2>Servicios principales</h2></div>
+                <p>Selecciona una categoría para filtrar el catálogo.</p>
+            </div>
+            <div class="category-grid">
+                <button type="button" data-category="Pantallas"><span>📲</span><strong>Pantallas</strong><small>Golpes y fallas táctiles</small></button>
+                <button type="button" data-category="Baterías"><span>🔋</span><strong>Baterías</strong><small>Autonomía y rendimiento</small></button>
+                <button type="button" data-category="Puerto de carga"><span>🔌</span><strong>Carga</strong><small>Puertos y conectores</small></button>
+                <button type="button" data-category="Cámaras"><span>📷</span><strong>Cámaras</strong><small>Enfoque y módulos</small></button>
+                <button type="button" data-category="Audio"><span>🔊</span><strong>Audio</strong><small>Bocinas y micrófonos</small></button>
+                <button type="button" data-category="Software"><span>⚙️</span><strong>Software</strong><small>Sistema y optimización</small></button>
+            </div>
+        </section>
+
+        <section class="catalog page-section" id="catalogo">
+            <div class="section-heading catalog-heading">
+                <div><span class="eyebrow">Precios en quetzales</span><h2>Catálogo RSF-PHONE</h2></div>
+                <div class="catalog-tools">
+                    <label for="filtroCategoria">Categoría</label>
+                    <select id="filtroCategoria">
+                        <option value="">Todas</option>
+                        <option>Pantallas</option>
+                        <option>Baterías</option>
+                        <option>Puerto de carga</option>
+                        <option>Cámaras</option>
+                        <option>Audio</option>
+                        <option>Software</option>
+                    </select>
+                    <button class="icon-button" id="refreshCatalogButton" type="button" title="Actualizar catálogo" aria-label="Actualizar catálogo">↻</button>
+                </div>
+            </div>
+            <p class="live-note" id="stockNotice">El stock se consulta al servidor cada vez que abres o actualizas el catálogo.</p>
+            <div class="product-grid" id="listaProductos" aria-live="polite"></div>
+        </section>
+
+        <section class="cart-section page-section hidden" id="carrito">
+            <div class="section-heading">
+                <div><span class="eyebrow">Paso 1 de 2</span><h2>Tu selección</h2></div>
+                <p>Puedes armar el carrito sin iniciar sesión. Te pediremos acceso con Google al reservar.</p>
+            </div>
+
+            <div class="cart-layout">
+                <div>
+                    <div class="cart-list" id="listaCarrito"></div>
+                    <button class="text-button" id="clearCartButton" type="button">Vaciar carrito</button>
+                </div>
+                <aside class="cart-summary">
+                    <span>Resumen</span>
+                    <div><span>Servicios</span><strong id="cartUnits">0</strong></div>
+                    <div class="cart-total"><span>Total estimado</span><strong id="totalCarrito">Q0.00</strong></div>
+                    <p>El monto es una simulación académica. No se realiza ningún cargo.</p>
+                </aside>
+            </div>
+
+            <div class="login-gate" id="loginGate">
+                <span class="gate-icon" aria-hidden="true">🔐</span>
+                <div><h3>Inicia sesión para reservar</h3><p>Usaremos tu cuenta de Google para identificar tu cita y guardar la factura.</p></div>
+                <button class="google-button" type="button" data-login-google><span>G</span> Continuar con Google</button>
+            </div>
+
+            <form class="checkout-panel hidden" id="checkoutForm">
+                <div class="checkout-heading">
+                    <div><span class="eyebrow">Paso 2 de 2</span><h3>Agenda y pago de prueba</h3></div>
+                    <span class="simulation-badge">Simulación · no cobra dinero</span>
+                </div>
+
+                <div class="checkout-grid">
+                    <fieldset>
+                        <legend>Datos de la cita</legend>
+                        <label for="deviceModel">Marca y modelo del teléfono</label>
+                        <input id="deviceModel" name="deviceModel" required maxlength="120" placeholder="Ej. Samsung Galaxy S23">
+
+                        <label for="customerPhone">Teléfono de contacto</label>
+                        <input id="customerPhone" name="customerPhone" required inputmode="tel" maxlength="30" placeholder="Ej. 5555 5555">
+
+                        <label for="appointmentAt">Fecha y hora presencial</label>
+                        <input id="appointmentAt" name="appointmentAt" type="datetime-local" required>
+
+                        <label for="appointmentNotes">Detalles del problema <span>(opcional)</span></label>
+                        <textarea id="appointmentNotes" name="appointmentNotes" rows="4" maxlength="600" placeholder="Cuéntanos qué sucede con el dispositivo"></textarea>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Tarjeta ficticia</legend>
+                        <div class="demo-card" aria-hidden="true">
+                            <div><strong>RSF-PHONE</strong><span>DEMO</span></div>
+                            <p id="cardPreviewNumber">•••• •••• •••• 4242</p>
+                            <div><span id="cardPreviewName">NOMBRE DEL CLIENTE</span><span id="cardPreviewExpiry">MM/AA</span></div>
+                        </div>
+                        <p class="test-card-note">Usa la tarjeta de prueba <button type="button" id="fillTestCardButton">4242 4242 4242 4242</button>. No ingreses una tarjeta real.</p>
+
+                        <label for="cardholder">Nombre del titular</label>
+                        <input id="cardholder" name="cardholder" required autocomplete="off" maxlength="80" placeholder="Nombre Apellido">
+
+                        <label for="cardNumber">Número de prueba</label>
+                        <input id="cardNumber" name="cardNumber" required inputmode="numeric" autocomplete="off" maxlength="19" placeholder="4242 4242 4242 4242">
+
+                        <div class="field-row">
+                            <div><label for="cardExpiry">Vencimiento</label><input id="cardExpiry" name="cardExpiry" required inputmode="numeric" autocomplete="off" maxlength="5" placeholder="12/30"></div>
+                            <div><label for="cardCvv">CVV ficticio</label><input id="cardCvv" name="cardCvv" required inputmode="numeric" autocomplete="off" maxlength="4" placeholder="123"></div>
+                        </div>
+                    </fieldset>
+                </div>
+                <button class="primary-button checkout-button" id="checkoutButton" type="submit">Confirmar cita y generar factura</button>
+            </form>
+        </section>
+
+        <section class="orders-section page-section hidden" id="pedidos">
+            <div class="section-heading">
+                <div><span class="eyebrow">Tu historial</span><h2>Mis citas y facturas</h2></div>
+                <button class="secondary-button" id="refreshOrdersButton" type="button">Actualizar</button>
+            </div>
+            <div id="ordersContent"></div>
+        </section>
+
+        <section class="admin-section page-section hidden owner-only" id="admin">
+            <div class="section-heading">
+                <div><span class="eyebrow">Acceso del propietario</span><h2>Administrar RSF-PHONE</h2></div>
+                <span class="role-badge owner">Propietario</span>
+            </div>
+
+            <div class="admin-tabs" role="tablist">
+                <button class="active" type="button" data-admin-tab="products">Productos y stock</button>
+                <button type="button" data-admin-tab="appointments">Citas de clientes</button>
+            </div>
+
+            <div id="adminProductsPanel">
+                <form class="admin-form" id="serviceForm">
+                    <input id="serviceId" type="hidden">
+                    <div class="form-heading"><h3 id="serviceFormTitle">Agregar servicio</h3><button class="text-button hidden" id="cancelServiceEdit" type="button">Cancelar edición</button></div>
+                    <div class="admin-form-grid">
+                        <div><label for="serviceName">Nombre</label><input id="serviceName" required maxlength="90"></div>
+                        <div><label for="serviceCategory">Categoría</label><input id="serviceCategory" required maxlength="60" list="categoryOptions"><datalist id="categoryOptions"><option value="Pantallas"><option value="Baterías"><option value="Puerto de carga"><option value="Cámaras"><option value="Audio"><option value="Software"></datalist></div>
+                        <div class="span-2"><label for="serviceDescription">Descripción</label><textarea id="serviceDescription" required minlength="10" maxlength="800" rows="3"></textarea></div>
+                        <div><label for="servicePrice">Precio (Q)</label><input id="servicePrice" required type="number" min="0.01" step="0.01"></div>
+                        <div><label for="serviceStock">Stock</label><input id="serviceStock" required type="number" min="0" step="1"></div>
+                        <div class="span-2"><label for="serviceImage">Imagen</label><select id="serviceImage" required><option value="/img/servicio-pantalla.png">Pantalla</option><option value="/img/servicio-bateria.png">Batería</option><option value="/img/servicio-carga.png">Puerto de carga</option><option value="/img/servicio-camara.png">Cámara</option><option value="/img/servicio-audio.png">Audio</option><option value="/img/servicio-software.png">Software</option></select></div>
+                    </div>
+                    <button class="primary-button" type="submit">Guardar servicio</button>
+                </form>
+                <div class="admin-list" id="adminServiceList"></div>
+            </div>
+
+            <div class="hidden" id="adminAppointmentsPanel">
+                <div class="admin-list" id="adminOrdersList"></div>
+            </div>
+        </section>
+    </main>
+
+    <footer id="contacto" class="page-section">
+        <div><div class="footer-brand">RSF-PHONE</div><p>Servicio técnico especializado en dispositivos Android e iOS.</p></div>
+        <div><strong>Atención presencial</strong><p>Agenda desde el catálogo para recibir tu comprobante.</p></div>
+        <div><strong>Importante</strong><p>El pago mostrado es una simulación y no procesa dinero real.</p></div>
+        <span>© 2026 RSF-PHONE</span>
+    </footer>
+
+    <dialog class="modal" id="loginModal">
+        <button class="modal-close" type="button" data-close-modal aria-label="Cerrar">×</button>
+        <span class="modal-icon" aria-hidden="true">🔐</span>
+        <h2>Entra a RSF-PHONE</h2>
+        <p>Una sola cuenta para reservar, recibir facturas y consultar tus citas.</p>
+        <button class="google-button wide" type="button" data-login-google><span>G</span> Continuar con Google</button>
+        <small>Al continuar, Google creará tu cuenta si es tu primera visita.</small>
+    </dialog>
+
+    <dialog class="modal receipt-modal" id="receiptModal">
+        <button class="modal-close no-print" type="button" data-close-modal aria-label="Cerrar">×</button>
+        <div id="receiptContent"></div>
+        <div class="receipt-actions no-print">
+            <button class="secondary-button" type="button" data-close-modal>Cerrar</button>
+            <button class="primary-button" id="printReceiptButton" type="button">Imprimir / guardar PDF</button>
         </div>
-    </div>
+    </dialog>
 
-    <div class="buttons">
-        <button class="btn-save" onclick="finalizarCompra()">
-            Pagar / finalizar compra
-        </button>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-        <button class="btn-clear" onclick="vaciarCarrito()">
-            Vaciar carrito
-        </button>
-    </div>
-</section>
-
-<footer class="page-section" id="contacto">
-    <h3>RSF-PHONE</h3>
-    <p>Servicio técnico especializado en Android e iOS.</p>
-    <span>© 2026 RSF-PHONE | Sprint 1</span>
-</footer>
-
-<script src="js/script.js"></script>
+    <script src="/vendor/supabase.js"></script>
+    <script src="/js/script.js"></script>
 </body>
 </html>

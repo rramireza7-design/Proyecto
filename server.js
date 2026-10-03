@@ -1,68 +1,370 @@
 const express = require("express");
-const cors = require("cors");
-const oracledb = require("oracledb");
 const path = require("path");
+const { createClient } = require("@supabase/supabase-js");
+const fallbackServices = require("./data/services.json");
 
 const app = express();
+const PORT = Number(process.env.PORT) || 3000;
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const OWNER_EMAIL = (process.env.OWNER_EMAIL || "").trim().toLowerCase();
+const databaseConfigured = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+const authConfigured = Boolean(databaseConfigured && SUPABASE_ANON_KEY);
 
-app.use(cors());
-app.use(express.json());
+let adminClient;
 
-// Servir archivos del frontend
-app.use(express.static(__dirname));
+function getAdminClient() {
+    if (!databaseConfigured) return null;
 
-const dbConfig = {
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    connectString: process.env.DB_CONNECT_STRING
-};
-
-// API de servicios
-app.get("/servicios", async (req, res) => {
-    let connection;
-
-    try {
-        connection = await oracledb.getConnection(dbConfig);
-
-        const result = await connection.execute(
-            `SELECT id_servicio,
-                    nombre,
-                    categoria,
-                    descripcion,
-                    precio,
-                    icono
-             FROM servicios
-             ORDER BY id_servicio`,
-            [],
-            {
-                outFormat: oracledb.OUT_FORMAT_OBJECT
-            }
-        );
-
-        res.json(result.rows);
-
-    } catch (error) {
-        console.error("Error Oracle:", error);
-
-        res.status(500).json({
-            error: error.message
+    if (!adminClient) {
+        adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+            auth: { autoRefreshToken: false, persistSession: false }
         });
+    }
 
-    } finally {
-        if (connection) {
-            await connection.close();
+    return adminClient;
+}
+
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co; frame-src https://accounts.google.com https://*.supabase.co; base-uri 'self'; form-action 'self'"
+    );
+    next();
+});
+app.use(express.json({ limit: "100kb" }));
+
+function normalizeText(value, maxLength = 500) {
+    return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function createSlug(value) {
+    return normalizeText(value, 80)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "")
+        .slice(0, 60);
+}
+
+function normalizeImagePath(value) {
+    const imagePath = normalizeText(value, 255);
+    const localImage = /^\/?img\/[a-z0-9._-]+\.(?:png|jpe?g|webp)$/i.test(imagePath);
+    const remoteImage = /^https:\/\/[a-z0-9.-]+\/[\w./%-]+(?:\?.*)?$/i.test(imagePath);
+
+    if (!localImage && !remoteImage) {
+        throw new Error("La ruta de imagen no es válida.");
+    }
+
+    return imagePath.startsWith("/") || remoteImage ? imagePath : `/${imagePath}`;
+}
+
+function validateServiceInput(body = {}) {
+    const name = normalizeText(body.name, 90);
+    const category = normalizeText(body.category, 60);
+    const description = normalizeText(body.description, 800);
+    const price = Number(body.price);
+    const stock = Number(body.stock);
+    const imagePath = normalizeImagePath(body.imagePath || body.image_path || "");
+
+    if (name.length < 3 || category.length < 3 || description.length < 10) {
+        throw new Error("Completa nombre, categoría y una descripción válida.");
+    }
+    if (!Number.isFinite(price) || price <= 0 || price > 100000) {
+        throw new Error("El precio debe ser un número mayor que cero.");
+    }
+    if (!Number.isInteger(stock) || stock < 0 || stock > 100000) {
+        throw new Error("El stock debe ser un número entero igual o mayor que cero.");
+    }
+
+    return {
+        name,
+        slug: createSlug(name),
+        category,
+        description,
+        price: Number(price.toFixed(2)),
+        stock,
+        image_path: imagePath,
+        active: body.active !== false
+    };
+}
+
+function consolidateItems(items) {
+    if (!Array.isArray(items) || items.length === 0 || items.length > 20) {
+        throw new Error("El carrito debe contener entre 1 y 20 servicios.");
+    }
+
+    const quantities = new Map();
+
+    for (const item of items) {
+        const id = normalizeText(item?.id, 50);
+        const quantity = Number(item?.quantity || 1);
+
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+            throw new Error("El carrito contiene un servicio inválido.");
         }
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10) {
+            throw new Error("La cantidad solicitada no es válida.");
+        }
+
+        quantities.set(id, (quantities.get(id) || 0) + quantity);
+    }
+
+    const normalized = [...quantities].map(([id, quantity]) => ({ id, quantity }));
+    if (normalized.reduce((sum, item) => sum + item.quantity, 0) > 20) {
+        throw new Error("El carrito no puede superar 20 servicios.");
+    }
+
+    return normalized;
+}
+
+async function authenticate(req, res, next) {
+    if (!authConfigured) {
+        return res.status(503).json({ error: "La autenticación todavía no está configurada en el servidor." });
+    }
+
+    const authorization = req.get("authorization") || "";
+    const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+    if (!token) {
+        return res.status(401).json({ error: "Debes iniciar sesión con Google." });
+    }
+
+    const supabase = getAdminClient();
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) {
+        return res.status(401).json({ error: "Tu sesión venció. Inicia sesión nuevamente." });
+    }
+
+    const user = data.user;
+    const email = (user.email || "").toLowerCase();
+    const metadata = user.user_metadata || {};
+    const ownerByEnvironment = Boolean(OWNER_EMAIL && email === OWNER_EMAIL);
+    const { data: existingProfile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+    const role = ownerByEnvironment || existingProfile?.role === "owner" ? "owner" : "customer";
+
+    await supabase.from("profiles").upsert({
+        id: user.id,
+        email,
+        display_name: normalizeText(metadata.full_name || metadata.name || email.split("@")[0], 120),
+        avatar_url: normalizeText(metadata.avatar_url || metadata.picture, 500),
+        role,
+        updated_at: new Date().toISOString()
+    }, { onConflict: "id" });
+
+    req.user = user;
+    req.role = role;
+    next();
+}
+
+function requireOwner(req, res, next) {
+    if (req.role !== "owner") {
+        return res.status(403).json({ error: "Esta acción está reservada para el propietario." });
+    }
+    next();
+}
+
+app.get("/api/health", (req, res) => {
+    res.json({ ok: true, databaseConfigured, authConfigured, timestamp: new Date().toISOString() });
+});
+
+app.get("/api/config", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY, authConfigured });
+});
+
+app.get("/api/services", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+
+    if (!databaseConfigured) {
+        return res.json({ services: fallbackServices, persistent: false });
+    }
+
+    const { data, error } = await getAdminClient()
+        .from("services")
+        .select("id,slug,name,category,description,price,stock,image_path,active,sort_order")
+        .eq("active", true)
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true });
+
+    if (error) {
+        console.error("No se pudo consultar servicios:", error.message);
+        return res.status(500).json({ error: "No se pudo cargar el catálogo." });
+    }
+    res.json({ services: data, persistent: true });
+});
+
+app.get("/api/me", authenticate, (req, res) => {
+    const metadata = req.user.user_metadata || {};
+    res.json({
+        id: req.user.id,
+        email: req.user.email,
+        name: metadata.full_name || metadata.name || req.user.email,
+        avatarUrl: metadata.avatar_url || metadata.picture || "",
+        role: req.role
+    });
+});
+
+app.post("/api/services", authenticate, requireOwner, async (req, res) => {
+    try {
+        const service = validateServiceInput(req.body);
+        const { data, error } = await getAdminClient().from("services").insert(service).select().single();
+        if (error) throw error;
+        res.status(201).json(data);
+    } catch (error) {
+        res.status(error.code === "23505" ? 409 : 400).json({ error: error.message || "No se pudo crear el servicio." });
     }
 });
 
-// Página principal
+app.patch("/api/services/:id", authenticate, requireOwner, async (req, res) => {
+    try {
+        const service = validateServiceInput(req.body);
+        const { data, error } = await getAdminClient()
+            .from("services")
+            .update({ ...service, updated_at: new Date().toISOString() })
+            .eq("id", req.params.id)
+            .select()
+            .single();
+        if (error) throw error;
+        res.json(data);
+    } catch (error) {
+        res.status(error.code === "PGRST116" ? 404 : 400).json({ error: error.message || "No se pudo actualizar el servicio." });
+    }
+});
+
+app.delete("/api/services/:id", authenticate, requireOwner, async (req, res) => {
+    const { data, error } = await getAdminClient()
+        .from("services")
+        .update({ active: false, updated_at: new Date().toISOString() })
+        .eq("id", req.params.id)
+        .select("id")
+        .single();
+
+    if (error) return res.status(400).json({ error: "No se pudo ocultar el servicio." });
+    res.json({ ok: true, id: data.id });
+});
+
+app.post("/api/orders", authenticate, async (req, res) => {
+    try {
+        const items = consolidateItems(req.body.items);
+        const appointmentAt = new Date(req.body.appointmentAt);
+        const deviceModel = normalizeText(req.body.deviceModel, 120);
+        const phone = normalizeText(req.body.phone, 30);
+        const notes = normalizeText(req.body.notes, 600);
+        const paymentBrand = normalizeText(req.body.paymentBrand, 30);
+        const paymentLast4 = normalizeText(req.body.paymentLast4, 4);
+        const earliestAppointment = Date.now() + (60 * 60 * 1000);
+        const latestAppointment = Date.now() + (180 * 24 * 60 * 60 * 1000);
+
+        if (!Number.isFinite(appointmentAt.getTime()) || appointmentAt.getTime() < earliestAppointment || appointmentAt.getTime() > latestAppointment) {
+            throw new Error("Selecciona una cita válida entre mañana y los próximos seis meses.");
+        }
+        if (deviceModel.length < 2 || !/^[+()\d\s-]{8,30}$/.test(phone)) {
+            throw new Error("Completa el modelo del dispositivo y un teléfono válido.");
+        }
+        if (!/^\d{4}$/.test(paymentLast4)) {
+            throw new Error("La referencia de pago no es válida.");
+        }
+
+        const { data, error } = await getAdminClient().rpc("create_service_order", {
+            p_user_id: req.user.id,
+            p_customer_email: req.user.email,
+            p_items: items,
+            p_appointment_at: appointmentAt.toISOString(),
+            p_device_model: deviceModel,
+            p_phone: phone,
+            p_notes: notes,
+            p_payment_brand: paymentBrand || "Tarjeta de prueba",
+            p_payment_last4: paymentLast4
+        });
+        if (error) throw error;
+        res.status(201).json(data);
+    } catch (error) {
+        console.error("No se pudo crear el pedido:", error.message);
+        res.status(400).json({ error: error.message || "No se pudo completar la compra simulada." });
+    }
+});
+
+app.get("/api/orders", authenticate, async (req, res) => {
+    const { data, error } = await getAdminClient()
+        .from("orders")
+        .select("id,receipt_number,total,appointment_at,device_model,status,payment_brand,payment_last4,created_at,order_items(service_name,unit_price,quantity,line_total)")
+        .eq("user_id", req.user.id)
+        .order("created_at", { ascending: false })
+        .limit(30);
+
+    if (error) return res.status(500).json({ error: "No se pudieron cargar tus citas." });
+    res.json(data);
+});
+
+app.get("/api/admin/orders", authenticate, requireOwner, async (req, res) => {
+    const { data, error } = await getAdminClient()
+        .from("orders")
+        .select("id,receipt_number,customer_email,total,appointment_at,device_model,phone,notes,status,payment_brand,payment_last4,created_at,order_items(service_name,unit_price,quantity,line_total)")
+        .order("appointment_at", { ascending: true })
+        .limit(100);
+
+    if (error) return res.status(500).json({ error: "No se pudieron cargar las citas." });
+    res.json(data);
+});
+
+app.patch("/api/admin/orders/:id/status", authenticate, requireOwner, async (req, res) => {
+    const status = normalizeText(req.body.status, 20);
+    const allowedStatuses = ["scheduled", "confirmed", "completed", "cancelled"];
+    if (!allowedStatuses.includes(status)) {
+        return res.status(400).json({ error: "El estado de la cita no es válido." });
+    }
+
+    const { data, error } = await getAdminClient()
+        .from("orders")
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq("id", req.params.id)
+        .select("id,status")
+        .single();
+
+    if (error) return res.status(400).json({ error: "No se pudo actualizar la cita." });
+    res.json(data);
+});
+
+app.get("/vendor/supabase.js", (req, res) => {
+    res.sendFile(path.join(__dirname, "node_modules", "@supabase", "supabase-js", "dist", "umd", "supabase.js"));
+});
+
+const staticOptions = {
+    etag: true,
+    maxAge: process.env.NODE_ENV === "production" ? "1h" : 0
+};
+
+app.use("/css", express.static(path.join(__dirname, "css"), staticOptions));
+app.use("/js", express.static(path.join(__dirname, "js"), staticOptions));
+app.use("/img", express.static(path.join(__dirname, "img"), {
+    ...staticOptions,
+    maxAge: process.env.NODE_ENV === "production" ? "7d" : 0
+}));
+
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// Puerto compatible con Render
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Servidor corriendo en puerto ${PORT}`);
+app.use((error, req, res, next) => {
+    console.error(error);
+    res.status(500).json({ error: "Ocurrió un error inesperado." });
 });
+
+if (require.main === module) {
+    app.listen(PORT, "0.0.0.0", () => {
+        console.log(`RSF-PHONE disponible en el puerto ${PORT}`);
+        console.log(`Supabase: ${authConfigured ? "configurado" : "pendiente de configurar"}`);
+    });
+}
+
+module.exports = { app, consolidateItems, createSlug, validateServiceInput };
